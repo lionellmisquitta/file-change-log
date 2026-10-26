@@ -1,0 +1,41 @@
+test_cell_addresses (test_recorder.CacheTests.test_cell_addresses) ... ok
+test_old_and_new_formulas_are_distinct (test_recorder.CacheTests.test_old_and_new_formulas_are_distinct) ... ok
+test_unknown_old_is_not_invented (test_recorder.CacheTests.test_unknown_old_is_not_invented) ... ok
+test_comparison_limit_is_explicit (test_recorder.ComparisonTests.test_comparison_limit_is_explicit) ... ok
+test_xlsx_values_formulas_and_sheet_changes (test_recorder.ComparisonTests.test_xlsx_values_formulas_and_sheet_changes) ... ok
+test_accept_unavailable_absolute_network_mount (test_recorder.ConfigurationTests.test_accept_unavailable_absolute_network_mount) ... ok
+test_reject_invalid_intervals (test_recorder.ConfigurationTests.test_reject_invalid_intervals) ... ok
+test_reject_nested_roots (test_recorder.ConfigurationTests.test_reject_nested_roots) ... ok
+test_reject_output_within_monitored_root (test_recorder.ConfigurationTests.test_reject_output_within_monitored_root) ... ok
+test_scope_blocks_sibling_prefix (test_recorder.ConfigurationTests.test_scope_blocks_sibling_prefix) ... ok
+test_windows_short_path_cannot_bypass_history_exclusion (test_recorder.ConfigurationTests.test_windows_short_path_cannot_bypass_history_exclusion) ... skipped 'Windows short-path alias check'
+test_live_event_records_observed_old_new_and_unsaved_status (test_recorder.ExcelEventTests.test_live_event_records_observed_old_new_and_unsaved_status) ... ok
+test_outside_workbook_content_is_not_logged (test_recorder.ExcelEventTests.test_outside_workbook_content_is_not_logged) ... ok
+test_oversized_live_event_is_explicit_and_invalidates_old_cache (test_recorder.ExcelEventTests.test_oversized_live_event_is_explicit_and_invalidates_old_cache) ... ok
+test_reopened_workbook_does_not_reuse_discarded_edit_baseline (test_recorder.ExcelEventTests.test_reopened_workbook_does_not_reuse_discarded_edit_baseline) ... ok
+test_save_request_and_result_have_separate_semantics (test_recorder.ExcelEventTests.test_save_request_and_result_have_separate_semantics) ... ok
+test_deleted_file_keeps_snapshot (test_recorder.FileCaptureTests.test_deleted_file_keeps_snapshot) ... ok
+test_document_snapshot_without_claiming_content_diff (test_recorder.FileCaptureTests.test_document_snapshot_without_claiming_content_diff) ... ok
+test_locked_file_is_retried_without_replacing_baseline (test_recorder.FileCaptureTests.test_locked_file_is_retried_without_replacing_baseline) ... ok
+test_no_duplicate_capture_after_unchanged_restart (test_recorder.FileCaptureTests.test_no_duplicate_capture_after_unchanged_restart) ... ok
+test_offline_root_never_causes_mass_deletions (test_recorder.FileCaptureTests.test_offline_root_never_causes_mass_deletions) ... ok
+test_other_binary_type_is_logged_not_copied (test_recorder.FileCaptureTests.test_other_binary_type_is_logged_not_copied) ... ok
+test_partial_enumeration_is_not_deletion (test_recorder.FileCaptureTests.test_partial_enumeration_is_not_deletion) ... ok
+test_paused_worker_does_not_capture (test_recorder.FileCaptureTests.test_paused_worker_does_not_capture) ... ok
+test_saved_versions_and_text_changes_preserve_original (test_recorder.FileCaptureTests.test_saved_versions_and_text_changes_preserve_original) ... ok
+test_source_changed_during_copy_does_not_commit_snapshot (test_recorder.FileCaptureTests.test_source_changed_during_copy_does_not_commit_snapshot) ... ok
+test_symlink_does_not_escape_scope (test_recorder.FileCaptureTests.test_symlink_does_not_escape_scope) ... ok
+test_temporary_files_are_ignored (test_recorder.FileCaptureTests.test_temporary_files_are_ignored) ... ok
+test_no_token_cannot_read_content (test_recorder.HttpTests.test_no_token_cannot_read_content) ... ok
+test_note_empty_rejected (test_recorder.HttpTests.test_note_empty_rejected) ... ok
+test_note_roundtrip_and_export (test_recorder.HttpTests.test_note_roundtrip_and_export) ... ok
+test_page_has_no_external_scripts (test_recorder.HttpTests.test_page_has_no_external_scripts) ... ok
+test_untrusted_host_is_rejected (test_recorder.HttpTests.test_untrusted_host_is_rejected) ... ok
+test_concurrent_events_are_complete_json (test_recorder.StoreTests.test_concurrent_events_are_complete_json) ... ok
+test_jsonl_rebuilds_lost_index_entry (test_recorder.StoreTests.test_jsonl_rebuilds_lost_index_entry) ... ok
+test_literal_search_does_not_expand_sql_wildcards (test_recorder.StoreTests.test_literal_search_does_not_expand_sql_wildcards) ... ok
+
+----------------------------------------------------------------------
+Ran 36 tests in 2.951s
+
+OK (skipped=1)

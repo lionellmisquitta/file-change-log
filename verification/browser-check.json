@@ -1,0 +1,10 @@
+{
+  "errors": [],
+  "overflow": false,
+  "checks": [
+    "setup",
+    "notes",
+    "responsive layout"
+  ],
+  "live_excel": "NOT_VERIFIED"
+}
