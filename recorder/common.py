@@ -23,7 +23,9 @@ def clean(value):
     return str(value)
 
 def canonical(path):
-    path = os.path.abspath(os.path.expanduser(os.fspath(path)))
+    # Resolve Windows 8.3 aliases and reparse-path spelling before containment
+    # checks; the history directory is resolved by pathlib as well.
+    path = os.path.realpath(os.path.abspath(os.path.expanduser(os.fspath(path))))
     if os.name == 'nt':
         try:
             import win32wnet

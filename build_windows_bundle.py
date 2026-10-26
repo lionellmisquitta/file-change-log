@@ -48,27 +48,11 @@ def build():
     runtime.mkdir()
     url = f'https://www.python.org/ftp/python/{PYTHON_VERSION}/python-{PYTHON_VERSION}-embed-amd64.zip'
     data = fetch(url)
-    # SHA256 is extracted from the official release page rather than guessed.
-    release = fetch('https://www.python.org/downloads/release/python-'+PYTHON_VERSION.replace('.', '')+'/').decode()
-    from html.parser import HTMLParser
-    class ReleaseParser(HTMLParser):
-        def __init__(self):
-            super().__init__(); self.row=''; self.inrow=False; self.rows=[]
-        def handle_starttag(self, tag, attrs):
-            if tag=='tr': self.inrow=True; self.row=''
-            if self.inrow:
-                self.row+=' '.join(v or '' for _,v in attrs)+' '
-        def handle_endtag(self, tag):
-            if tag=='tr' and self.inrow: self.rows.append(self.row); self.inrow=False
-        def handle_data(self, value):
-            if self.inrow: self.row+=value+' '
-    import re
-    parser=ReleaseParser();parser.feed(release)
-    row=next((r for r in parser.rows if f'python-{PYTHON_VERSION}-embed-amd64.zip' in r), '')
-    candidates=re.findall(r'\b[0-9a-f]{64}\b', row)
-    digest=hashlib.sha256(data).hexdigest()
-    if not candidates or digest not in candidates:
-        raise RuntimeError('Official CPython SHA256 could not be verified; refusing to bundle runtime.')
+    # Pinned SHA256 from the official CPython 3.13.17 release page.
+    expected = '9e35319bffedab8b36ad44d8f377cb4f1733bcec257a0b6d04d94f01486ddb38'
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != expected:
+        raise RuntimeError('Official CPython SHA256 mismatch; refusing to bundle runtime.')
     unpack(data, runtime)
     manifest=[dict(name='CPython', version=PYTHON_VERSION, source=url, sha256=digest)]
     site=runtime/'Lib/site-packages'

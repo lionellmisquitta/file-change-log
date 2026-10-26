@@ -153,6 +153,11 @@ class StoreTests(Workspace):
         finally:recovered.close()
 
 class ConfigurationTests(Workspace):
+    @unittest.skipUnless(os.name == 'nt', 'Windows short-path alias check')
+    def test_windows_short_path_cannot_bypass_history_exclusion(self):
+        import win32api
+        short=win32api.GetShortPathName(str(self.base))
+        with self.assertRaises(ValueError):validate_config({'roots':[short]},self.store.directory)
     def test_reject_output_within_monitored_root(self):
         with self.assertRaises(ValueError):validate_config({'roots':[str(self.base)]},self.store.directory)
     def test_reject_nested_roots(self):
@@ -196,5 +201,44 @@ class HttpTests(unittest.TestCase):
         with self.request('/') as r:
             html=r.read().decode();self.assertIn("textContent=content",html);self.assertNotIn('<script src=',html)
             self.assertEqual(r.headers['Referrer-Policy'],'no-referrer')
+
+class ExcelEventTests(Workspace):
+    def make_sheet(self, value=100, formula=100, path=None):
+        from types import SimpleNamespace as N
+        area=N(Row=1,Column=1,Rows=N(Count=1),Columns=N(Count=1),Value2=value,Formula=formula)
+        target=N(CountLarge=1,Areas=[area],Address='$A$1')
+        wb=N(Path=str(self.root),FullName=str(path or self.root/'book.xlsb'))
+        sh=N(Parent=wb,CodeName='Sheet1',Name='Orders',UsedRange=target)
+        wb.Worksheets=[sh]
+        return wb,sh,target,area
+    def listener(self):
+        return ExcelListener(self.store,{'excel_cache_cells':100,'excel_event_cells':10},lambda:[str(self.root)])
+    def test_live_event_records_observed_old_new_and_unsaved_status(self):
+        listener=self.listener();wb,sh,target,area=self.make_sheet()
+        listener.opened(wb,'instance');area.Value2=10;area.Formula=10
+        listener.handlers('instance')().OnSheetChange(sh,target)
+        event=self.store.recent()[0]
+        self.assertEqual(event['event'],'excel_range_changed')
+        self.assertEqual(event['changes'][0]['old_value'],100)
+        self.assertEqual(event['changes'][0]['new_value'],10)
+        self.assertEqual(event['save_state'],'not_confirmed_saved')
+    def test_outside_workbook_content_is_not_logged(self):
+        listener=self.listener();wb,sh,target,area=self.make_sheet(path=self.base/'private.xlsx')
+        listener.changed(sh,target,'instance');self.assertEqual(self.kinds(),[])
+    def test_oversized_live_event_is_explicit_and_invalidates_old_cache(self):
+        listener=self.listener();wb,sh,target,area=self.make_sheet();listener.prime(wb,'instance')
+        target.CountLarge=100000;listener.changed(sh,target,'instance')
+        e=self.store.recent()[0];self.assertFalse(e['details_captured']);self.assertTrue(e['old_baseline_invalidated'])
+    def test_reopened_workbook_does_not_reuse_discarded_edit_baseline(self):
+        listener=self.listener();wb,sh,target,area=self.make_sheet();listener.opened(wb,'instance')
+        area.Value2=10;area.Formula=10;listener.changed(sh,target,'instance')
+        area.Value2=100;area.Formula=100;listener.opened(wb,'instance')
+        area.Value2=20;area.Formula=20;listener.changed(sh,target,'instance')
+        self.assertEqual(self.store.recent()[0]['changes'][0]['old_value'],100)
+    def test_save_request_and_result_have_separate_semantics(self):
+        listener=self.listener();wb,sh,target,area=self.make_sheet();events=listener.handlers('instance')()
+        events.OnWorkbookBeforeSave(wb,True,False);events.OnWorkbookAfterSave(wb,False)
+        logs=self.store.recent();self.assertFalse(next(e for e in logs if e['event']=='excel_save_result')['success'])
+        self.assertTrue(next(e for e in logs if e['event']=='excel_save_requested')['success_not_implied'])
 
 if __name__=='__main__':unittest.main()
