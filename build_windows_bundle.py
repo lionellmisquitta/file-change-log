@@ -39,10 +39,10 @@ def build():
     if package.exists():
         shutil.rmtree(package)
     package.mkdir()
-    for name in ['recorder', 'web', 'docs', 'tests']:
+    for name in ['recorder', 'web', 'docs', 'tests', 'demo']:
         shutil.copytree(ROOT/name, package/name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     for name in ['run.py', 'README.md', 'START-HERE.txt', 'Start Recorder.bat', 'Open Recorder.bat',
-                 'Start Quietly.vbs', 'requirements.txt', 'build_windows_bundle.py']:
+                 'Start Quietly.vbs', 'Create Demo Files.bat', 'requirements.txt', 'build_windows_bundle.py']:
         shutil.copy2(ROOT/name, package/name)
     runtime = package/'runtime'
     runtime.mkdir()
