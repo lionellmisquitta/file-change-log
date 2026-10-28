@@ -1,0 +1,13 @@
+change_id: CHG-44
+readiness: pilot_only_visual_verification_pending
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - web/index.html
+regression_obligations:
+  - id: R1
+    reason: Copy must reproduce complete event JSON without changing the event
+    test_id: core
+  - id: R2
+    reason: Existing detail expansion, event filtering and explain action remain intact
+    test_id: core
