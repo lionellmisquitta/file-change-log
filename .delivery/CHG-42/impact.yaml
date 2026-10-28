@@ -1,0 +1,21 @@
+change_id: CHG-42
+readiness: pilot_only_windows_live_verification_pending
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - recorder/folders.py
+  - recorder/compare.py
+  - tests/test_recorder.py
+regression_obligations:
+  - id: R1
+    reason: First saved workbook captures populated cells without claiming a live edit
+    test_id: core
+  - id: R2
+    reason: New cells appearing in later saved versions remain reported with unknown prior empty value
+    test_id: core
+  - id: R3
+    reason: Existing file capture and large workbook limits retain snapshots and errors
+    test_id: core
+  - id: R4
+    reason: Actual desktop Excel events require target Windows machine validation
+    test_id: windows-acceptance
