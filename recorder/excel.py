@@ -20,7 +20,7 @@ class CellCache:
         for address, state in cells.items():
             known = cache is not None and address in cache
             prior = cache.get(address) if known else None
-            changes.append(dict(address=address, old_value=prior.get('value') if prior else None,
+            changes.append(dict(address=address, operation=('added' if known and prior.get('value') is None and prior.get('formula') is None and (state.get('value') is not None or state.get('formula') is not None) else 'cleared' if known and (prior.get('value') is not None or prior.get('formula') is not None) and state.get('value') is None and state.get('formula') is None else 'updated' if known else 'observed_unknown_prior'), old_value=prior.get('value') if prior else None,
                                 old_formula=prior.get('formula') if prior else None, old_value_known=known,
                                 new_value=state.get('value'), new_formula=state.get('formula')))
         if cache is None:
@@ -105,7 +105,10 @@ class ExcelListener:
         key = (instance, *self.sheet_key(sh))
         self.sheet_names[key] = str(sh.Name)
         try:
-            self.cache.seed(key, self.cells(sh.UsedRange, int(self.settings.get('excel_cache_cells', 200000))))
+            baseline = self.cells(sh.UsedRange, int(self.settings.get('excel_cache_cells', 200000)))
+            # A newly empty cell may lie outside UsedRange; a later change to it
+            # must be classified as an addition rather than lost as unknown.
+            self.cache.seed(key, baseline)
         except Exception as e:
             self.cache.invalidate(key)
             self.emit('excel_baseline_incomplete', path, sheet=str(sh.Name), reason=str(e), old_values_may_be_unknown=True)
@@ -233,8 +236,16 @@ class ExcelListener:
             self.store.emit('excel_listener_unavailable', reason=str(e))
             return
         previous_gaps = None
+        last_tick = time.monotonic()
         try:
             while not self.stop.is_set():
+                current_tick = time.monotonic()
+                if current_tick - last_tick > 30:
+                    self.store.emit('excel_monitoring_gap', reason='monitor_thread_delayed_possible_sleep_or_suspend', gap_seconds=round(current_tick-last_tick, 1), intermediate_edits_not_recoverable=True)
+                    self.cache.sheets.clear()
+                    self.known_books.clear()
+                    self.connections.clear()
+                last_tick = current_tick
                 try:
                     if self.reset.is_set():
                         self.cache.sheets.clear()

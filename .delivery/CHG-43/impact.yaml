@@ -1,0 +1,21 @@
+change_id: CHG-43
+readiness: pilot_only_windows_live_verification_pending
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - recorder/excel.py
+  - recorder/app.py
+  - tests/test_recorder.py
+regression_obligations:
+  - id: R1
+    reason: New populated cells and cleared cells classified from observed baselines
+    test_id: core
+  - id: R2
+    reason: Existing updates and unknown prior values remain accurately represented
+    test_id: core
+  - id: R3
+    reason: Recorder emits gap evidence and reconnects to Excel after sustained monitoring delay
+    test_id: core
+  - id: R4
+    reason: Per-user scheduled task and crash recovery require Windows acceptance
+    test_id: windows-acceptance

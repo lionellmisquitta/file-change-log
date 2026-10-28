@@ -106,32 +106,68 @@ class Recorder:
         # Blocked network operations can outlive shutdown. They are daemon threads;
         # the process exit ends them, without making false deletion claims.
 
+def _scheduled_task():
+    import win32com.client
+    service = win32com.client.Dispatch('Schedule.Service')
+    service.Connect()
+    return service.GetFolder('\\\\'), service
+
+
 def startup_enabled():
     if os.name != 'nt':
         return False
     try:
-        import winreg
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Run') as k:
-            return bool(winreg.QueryValueEx(k, 'FileChangeLog')[0])
-    except OSError:
-        return False
+        folder, _ = _scheduled_task()
+        folder.GetTask('FileChangeLogRecorder')
+        return True
+    except Exception:
+        # Legacy packages registered startup in the current-user Run key.
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\\Microsoft\\Windows\\CurrentVersion\\Run') as k:
+                return bool(winreg.QueryValueEx(k, 'FileChangeLog')[0])
+        except OSError:
+            return False
+
 
 def set_startup(enabled, directory):
     if os.name != 'nt':
         raise ValueError('Sign-in startup is available on Windows only.')
     import winreg
-    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Run') as k:
-        if enabled:
-            executable = Path(sys.executable).with_name('pythonw.exe')
-            if not executable.exists():
-                executable = Path(sys.executable)
-            command = subprocess.list2cmdline([str(executable), str(PACKAGE_ROOT/'run.py'), '--background', '--data-dir', str(directory)])
-            winreg.SetValueEx(k, 'FileChangeLog', 0, winreg.REG_SZ, command)
-        else:
-            try:
-                winreg.DeleteValue(k, 'FileChangeLog')
-            except FileNotFoundError:
-                pass
+    folder, service = _scheduled_task()
+    if enabled:
+        task = service.NewTask(0)
+        task.RegistrationInfo.Description = 'File Change Log: restart after unexpected exit in this interactive user session'
+        task.Principal.LogonType = 3  # TASK_LOGON_INTERACTIVE_TOKEN, no stored password.
+        trigger = task.Triggers.Create(9)  # TASK_TRIGGER_LOGON.
+        trigger.Enabled = True
+        settings = task.Settings
+        settings.Enabled = True
+        settings.StartWhenAvailable = True
+        settings.ExecutionTimeLimit = 'PT0S'
+        settings.RestartInterval = 'PT1M'
+        settings.RestartCount = 999
+        executable = Path(sys.executable).with_name('pythonw.exe')
+        if not executable.exists():
+            executable = Path(sys.executable)
+        action = task.Actions.Create(0)
+        action.Path = str(executable)
+        action.Arguments = subprocess.list2cmdline([str(PACKAGE_ROOT/'run.py'), '--background', '--data-dir', str(directory)])
+        action.WorkingDirectory = str(PACKAGE_ROOT)
+        # Create/update the current user's task; do not elevate or store credentials.
+        folder.RegisterTaskDefinition('FileChangeLogRecorder', task, 6, '', '', 3)
+    else:
+        try:
+            folder.DeleteTask('FileChangeLogRecorder', 0)
+        except Exception as exc:
+            if 'cannot find' not in str(exc).lower() and 'not found' not in str(exc).lower():
+                raise
+    # Only remove the legacy registration after the scheduled task was set.
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\\Microsoft\\Windows\\CurrentVersion\\Run') as key:
+        try:
+            winreg.DeleteValue(key, 'FileChangeLog')
+        except FileNotFoundError:
+            pass
 
 def make_handler(recorder, token, shutdown):
     class Handler(BaseHTTPRequestHandler):
