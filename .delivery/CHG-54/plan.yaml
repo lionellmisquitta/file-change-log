@@ -1,0 +1,25 @@
+change_id: CHG-54
+route: Standard Change
+prohibited_paths:
+  - recorder/
+  - web/
+  - requirements.txt
+checkpoints:
+  - id: real-pivot-operations
+    allowed_paths:
+      - tests/uno_pivot_operations.py
+      - tests/test_pivot_operations_end_to_end.py
+      - .github/workflows/real-pivot-operations.yml
+      - docs/PIVOT-OPERATIONS-AUTOMATED-QA.md
+      - .delivery/CHG-54/
+    test_paths:
+      - tests/
+    test_config_changes:
+      - .github/workflows/real-pivot-operations.yml
+    tests:
+      - id: pivot-real-engine
+        command: [python, -m, unittest, discover, -s, tests, -p, test_pivot_operations_end_to_end.py, -v]
+        timeout_seconds: 180
+      - id: full-regression
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 240
