@@ -1,0 +1,20 @@
+change_id: CHG-47
+route: Standard Change
+prohibited_paths:
+  - .github/
+  - user-history/
+  - secrets/
+checkpoints:
+  - id: retest-critical-fixes
+    allowed_paths:
+      - recorder/excel.py
+      - recorder/folders.py
+      - recorder/handover.py
+      - tests/test_recorder.py
+      - .delivery/CHG-47/
+    test_paths:
+      - tests/
+    tests:
+      - id: core
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 120
