@@ -15,10 +15,11 @@ checkpoints:
       - recorder/handover.py
       - web/index.html
       - tests/test_recorder.py
+      - tests/test_public_dataset_stress.py
       - .delivery/CHG-48/
     test_paths:
       - tests/
     tests:
       - id: core
         command: [python, -m, unittest, discover, -s, tests, -v]
-        timeout_seconds: 120
+        timeout_seconds: 180
