@@ -352,6 +352,80 @@ class PilotFindingsRegressionTests(Workspace):
         self.assertEqual(after['changes'][0]['operation'], 'added')
         self.assertTrue(after['changes'][0]['old_value_known'])
 
+class NovemberV2RetestRegressions(Workspace):
+    def test_a1_range_parser_and_growth_predicate(self):
+        from recorder.excel import range_bounds, is_growth_outside_old_range
+        self.assertEqual(range_bounds('$A$1:$Z$10'), (1, 1, 26, 10))
+        self.assertEqual(range_bounds('$C$7'), (3, 7, 3, 7))
+        self.assertTrue(is_growth_outside_old_range('$A$1:$C$6',
+                                                   '$A$1:$Z$10', {'Z10': {}}))
+        self.assertFalse(is_growth_outside_old_range('$A$1:$C$6',
+                                                    '$A$1:$C$10', {'B4': {}}))
+
+    def test_inserting_cells_invalidates_old_value_at_shifted_address(self):
+        from types import SimpleNamespace as N
+        listener = ExcelListener(self.store, {'excel_cache_cells': 1000,
+                                  'excel_event_cells': 20}, lambda: [str(self.root)])
+        wb = N(Path=str(self.root), FullName=str(self.root/'royalty.xlsx'))
+        area = N(Row=1, Column=1, Rows=N(Count=1), Columns=N(Count=1),
+                 Value2='seed', Formula='seed')
+        target = N(CountLarge=1, Areas=[area], Address='$A$1')
+        sh = N(Parent=wb, CodeName='Sheet1', Name='Royalties',
+               UsedRange=N(Address='$A$1:$C$10', CountLarge=1,
+                           Areas=[area]))
+        wb.Worksheets = [sh]
+        listener.opened(wb, 'excel')
+        key = ('excel', *listener.sheet_key(sh))
+        listener.cache.seed(key, {'B7': {'value': 'v7_2', 'formula': None}})
+        sh.UsedRange.Address = '$A$1:$C$11'
+        area.Row = 4
+        area.Value2 = 'inserted'
+        area.Formula = 'inserted'
+        target.Address = '$A$4'
+        listener.changed(sh, target, 'excel')
+        self.assertIn('excel_old_values_invalidated', self.kinds())
+        area.Row = 7
+        area.Column = 2
+        area.Value2 = 'v6_2'
+        area.Formula = 'v6_2'
+        target.Address = '$B$7'
+        listener.changed(sh, target, 'excel')
+        latest = next(e for e in self.store.recent()
+                      if e['event']=='excel_range_changed')
+        self.assertFalse(latest['changes'][0]['old_value_known'])
+        self.assertEqual(latest['changes'][0]['operation'], 'observed_unknown_prior')
+
+    def test_oversized_sheet_baseline_does_not_schedule_poll_retry(self):
+        from types import SimpleNamespace as N
+        listener = ExcelListener(self.store, {'excel_cache_cells': 200000,
+                                  'excel_event_cells': 10000}, lambda: [str(self.root)])
+        wb = N(Path=str(self.root), FullName=str(self.root/'large.xlsx'))
+        huge = N(CountLarge=250000, Address='$A$1:$AX$5000')
+        sh = N(Parent=wb, CodeName='Sheet1', Name='Large', UsedRange=huge)
+        wb.Worksheets = [sh]
+        listener.prime(wb, 'excel')
+        key = ('excel', *listener.sheet_key(sh))
+        self.assertNotIn(key, listener.reseed_needed)
+        self.assertEqual(self.kinds().count('excel_baseline_incomplete'), 1)
+        listener.seed_sheet(sh, 'excel')
+        self.assertEqual(self.kinds().count('excel_baseline_incomplete'), 1)
+
+    def test_snapshot_spacing_is_logged_once_then_final_version_captured(self):
+        p = self.root/'sales.csv'
+        p.write_text('one')
+        self.worker.settings.update(snapshot_budget_mb=10, baseline_budget_mb=5)
+        self.capture()
+        self.store.snapshot_bytes = 7*1024*1024
+        p.write_text('two')
+        self.capture()
+        self.worker.scan_once()
+        self.assertEqual(self.kinds().count('snapshot_deferred_spacing'), 1)
+        self.assertIn(canonical(p), self.worker.pending)
+        self.worker.last_snapshot_at[canonical(p)] -= 901
+        self.worker.scan_once()
+        self.assertEqual(self.kinds().count('snapshot_deferred_spacing'), 1)
+        self.assertEqual(self.kinds().count('file_version_captured'), 2)
+
 class ConfigurationTests(Workspace):
     @unittest.skipUnless(os.name == 'nt', 'Windows short-path alias check')
     def test_windows_short_path_cannot_bypass_history_exclusion(self):
