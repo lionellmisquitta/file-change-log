@@ -10,6 +10,7 @@ targets:
   - recorder/handover.py
   - recorder/notes_window.py
   - web/index.html
+  - README.md
   - tests/test_recorder.py
 regression_obligations:
   - id: R1
