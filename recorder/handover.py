@@ -19,28 +19,31 @@ def build_handover(store, start='', end='', include_snapshots=False):
     try:
         with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=5,
                              allowZip64=True) as archive:
-            with archive.open('events.jsonl', 'w') as events, archive.open('notes.jsonl', 'w') as notes, archive.open('gaps.jsonl', 'w') as gaps:
-                # These are an observational timeline, not an exhaustive audit of activity.
-                for log in sorted(store.logs.glob('events-*.jsonl')):
-                    with log.open('rb') as raw:
-                        for line in raw:
-                            try:
-                                item = json.loads(line)
-                            except (UnicodeDecodeError, ValueError):
-                                counts['malformed_lines'] += 1
-                                continue
-                            timestamp = item.get('timestamp_utc', '')
-                            if (start and timestamp < start) or (end and timestamp > end):
-                                continue
-                            payload = (json.dumps(item, ensure_ascii=False, allow_nan=False) + '\\n').encode('utf-8')
-                            events.write(payload)
-                            counts['events'] += 1
-                            if item.get('event') == 'user_explanation':
-                                notes.write(payload)
-                                counts['notes'] += 1
-                            if item.get('event') in GAP_KINDS:
-                                gaps.write(payload)
-                                counts['gaps'] += 1
+            # ZIP permits only one active output member at a time.
+            for member, kind in (('events.jsonl', 'events'),
+                                 ('notes.jsonl', 'notes'),
+                                 ('gaps.jsonl', 'gaps')):
+                with archive.open(member, 'w') as output_member:
+                    for log in sorted(store.logs.glob('events-*.jsonl')):
+                        with log.open('rb') as raw:
+                            for line in raw:
+                                try:
+                                    item = json.loads(line)
+                                except (UnicodeDecodeError, ValueError):
+                                    if kind == 'events':
+                                        counts['malformed_lines'] += 1
+                                    continue
+                                timestamp = item.get('timestamp_utc', '')
+                                if (start and timestamp < start) or (end and timestamp > end):
+                                    continue
+                                event = item.get('event')
+                                if kind == 'notes' and event != 'user_explanation':
+                                    continue
+                                if kind == 'gaps' and event not in GAP_KINDS:
+                                    continue
+                                payload = (json.dumps(item, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+                                output_member.write(payload)
+                                counts[kind] += 1
             if include_snapshots:
                 for snapshot in sorted(store.snapshots.rglob('*')):
                     if snapshot.is_file() and not snapshot.name.endswith('.partial'):
