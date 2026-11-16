@@ -194,6 +194,69 @@ class StoreTests(Workspace):
         try:self.assertEqual(recovered.recent()[0]['id'],event['id'])
         finally:recovered.close()
 
+class PhaseOneRegressionTests(Workspace):
+    def test_torn_jsonl_record_does_not_swallow_next_event(self):
+        self.store.emit('before_torn', 'a')
+        log = next(self.store.logs.glob('events-*.jsonl'))
+        with log.open('ab') as handle:
+            handle.write(b'{"truncated":')
+        recovered = Store(self.store.directory)
+        try:
+            recovered.emit('after_torn', 'b')
+        finally:
+            recovered.close()
+        replay = Store(self.store.directory)
+        try:
+            kinds = [event['event'] for event in replay.recent()]
+            self.assertIn('torn_record_detected', kinds)
+            self.assertIn('after_torn', kinds)
+        finally:
+            replay.close()
+
+    def test_snapshot_deduplicated_across_folders_and_renames(self):
+        p = self.root/'one.txt'
+        p.write_bytes(b'hello')
+        self.capture()
+        used = self.store.snapshot_bytes
+        (self.root/'sub').mkdir()
+        (self.root/'sub'/'two.txt').write_bytes(b'hello')
+        self.capture()
+        self.assertEqual(self.store.snapshot_bytes, used)
+        (self.root/'sub'/'two.txt').rename(self.root/'sub'/'three.txt')
+        self.capture()
+        self.assertEqual(self.store.snapshot_bytes, used)
+
+    def test_budget_skips_with_explicit_evidence(self):
+        self.worker.settings['snapshot_budget_mb'] = 10
+        self.worker.settings['baseline_budget_mb'] = 0
+        p = self.root/'orders.txt'
+        p.write_bytes(b'something')
+        self.capture()
+        self.assertIn('snapshot_skipped_budget', self.kinds())
+        self.assertIsNone(self.store.inventory(self.worker.root)[str(p)][1])
+
+    def test_recursive_paste_inside_new_nested_directory(self):
+        deep = self.root/'year'/'quarter'/'batch'
+        deep.mkdir(parents=True)
+        (deep/'payments.csv').write_text('invoice,value\n1,300\n')
+        self.capture()
+        self.assertIn(str(deep/'payments.csv'), self.store.inventory(self.worker.root))
+
+    def test_sparse_seeded_sheet_classifies_new_outside_used_range(self):
+        cache = CellCache()
+        cache.seed('sheet', {'A1': {'value': 3, 'formula': None}})
+        result = cache.change('sheet', {'Z10': {'value': 7, 'formula': None}})[0]
+        self.assertTrue(result['old_value_known'])
+        self.assertEqual(result['operation'], 'added')
+
+    def test_invalidated_sheet_never_invents_old_value(self):
+        cache = CellCache()
+        cache.seed('sheet', {'A2': {'value': 'old', 'formula': None}})
+        cache.invalidate('sheet')
+        result = cache.change('sheet', {'A2': {'value': 'new', 'formula': None}})[0]
+        self.assertFalse(result['old_value_known'])
+        self.assertEqual(result['operation'], 'observed_unknown_prior')
+
 class ConfigurationTests(Workspace):
     @unittest.skipUnless(os.name == 'nt', 'Windows short-path alias check')
     def test_windows_short_path_cannot_bypass_history_exclusion(self):
