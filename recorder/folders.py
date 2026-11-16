@@ -173,13 +173,33 @@ class FolderWorker:
             self.health['unreadable_paths'] = len(blocked)
         else:
             self.health.pop('unreadable_paths', None)
+        # A same-volume rename has a stable device/inode pair. Preserve the
+        # old snapshot without fabricating content changes or a deletion.
+        missing = {path: old[path] for path in set(old) - set(current)}
+        arrived = {path: sig for path, sig in current.items() if path not in old}
+        moved_from = {}
+        used_old = set()
+        for destination, sig in arrived.items():
+            if not sig[2] or not sig[3]:
+                continue
+            matches = [source for source, prior in missing.items()
+                       if source not in used_old and prior[0][2:] == sig[2:] ]
+            if len(matches) == 1:
+                source = matches[0]
+                moved_from[destination] = source
+                used_old.add(source)
         for path in set(old) - set(current):
             if any(inside_path(path, subtree) for subtree in blocked):
                 continue  # An unreadable subtree is not evidence of deletion.
             if not self.enabled():
                 return
-            self.store.emit('file_absent_on_scan', path, root=self.root, last_snapshot=old[path][1],
-                            exact_deletion_time_unknown=True)
+            if path in used_old:
+                destination = next(dest for dest, source in moved_from.items() if source == path)
+                self.store.emit('file_moved', path, destination=destination, root=self.root,
+                                continuity='device_and_inode_match')
+            else:
+                self.store.emit('file_absent_on_scan', path, root=self.root, last_snapshot=old[path][1],
+                                exact_deletion_time_unknown=True)
             self.store.drop_file(self.root, path)
             self.pending.pop(path, None)
         # Capture recently modified working files first when baseline allowance is finite.
@@ -187,6 +207,13 @@ class FolderWorker:
             if self.stop.is_set() or not self.enabled():
                 return
             previous = old.get(path)
+            if path in moved_from:
+                carried = old[moved_from[path]]
+                if sig == carried[0]:
+                    self.store.put_file(self.root, path, sig, carried[1])
+                    self.pending.pop(path, None)
+                    continue
+                previous = carried
             if previous and sig == previous[0]:
                 self.pending.pop(path, None)
                 continue
@@ -199,7 +226,7 @@ class FolderWorker:
             try:
                 snapshot = self.capture(path, sig, initial=(previous is None and path in self.baseline_paths))
                 event = self.store.emit('file_version_captured', path, root=self.root,
-                    capture='saved_file_bytes', classification='changed' if previous else ('baseline' if path in self.baseline_paths else 'arrived'),
+                    capture='saved_file_bytes', classification='moved_and_changed' if path in moved_from else ('changed' if previous else ('baseline' if path in self.baseline_paths else 'arrived')),
                     size=sig[0], modified_time_ns=sig[1], snapshot=snapshot,
                     previous_snapshot=previous[1] if previous else None)
                 self.store.put_file(self.root, path, sig, snapshot or (previous[1] if previous else None))
