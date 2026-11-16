@@ -1,0 +1,24 @@
+change_id: CHG-001
+readiness: pilot_only_windows_live_verification_pending
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - recorder/
+  - web/
+  - run.py
+regression_obligations:
+  - id: R1
+    reason: Never infer mass deletion from unavailable or incomplete folder scans
+    test_id: core
+  - id: R2
+    reason: Preserve originals, retry unstable reads and retain snapshot history
+    test_id: core
+  - id: R3
+    reason: Distinguish observed unsaved Excel edits from saved results and unknown old values
+    test_id: core
+  - id: R4
+    reason: Restrict local UI reads and writes to session-token holders
+    test_id: core
+  - id: R5
+    reason: Actual Windows Excel callbacks and sign-in startup require target-host evidence
+    test_id: windows-acceptance

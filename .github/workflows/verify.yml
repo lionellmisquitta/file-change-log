@@ -1,0 +1,40 @@
+name: Verify recorder
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  core:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - run: python -m compileall -q recorder run.py build_windows_bundle.py
+  windows-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python build_windows_bundle.py
+      - name: Smoke-test bundled Windows runtime and COM imports
+        shell: pwsh
+        run: |
+          & 'dist/FileChangeLog-Windows-x64/runtime/python.exe' -c "import pythoncom, win32com.client, win32gui, watchdog, openpyxl; import recorder.app; print('Bundled runtime imports passed')"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FileChangeLog-Windows-x64
+          path: dist/FileChangeLog-Windows-x64.zip
+      # Hosted runners do not provide desktop Excel. This job cannot certify
+      # target-laptop COM attachment, workbook behaviour or startup at sign-in.

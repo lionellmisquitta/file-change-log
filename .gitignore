@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+runtime/
+dist/
+build-cache/
+*.sqlite*
+session.json
+settings.json
+logs/
+snapshots/
+*.partial
+verification/browser/

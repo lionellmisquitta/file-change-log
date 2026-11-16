@@ -1,0 +1,27 @@
+FILE CHANGE LOG — first Windows pilot
+
+1. Extract the entire ZIP into a permanent local folder.
+   Example: C:\Users\your-name\Apps\FileChangeLog
+   Do not run from inside the ZIP or move it after enabling startup.
+2. Double-click Start Recorder.bat. A local page opens in your browser.
+3. Enter one full monitored folder path per line. Local, Google Drive desktop,
+   mapped network and UNC paths are supported. Subfolders are included.
+4. Click Save folders. Wait for initial snapshots.
+5. Click Enable start at sign-in. This registers startup for your user only.
+6. Open a test workbook inside a monitored folder. Edit a cell and save it.
+   Refresh Recent activity. Check BOTH excel_range_changed and file_version_captured.
+7. Click Explain beside an event to add context.
+
+Closing the browser tab does NOT stop recording. Open Recorder.bat brings it back.
+Stop recorder completely stops the process. Disable start at sign-in removes startup.
+History defaults to %LOCALAPPDATA%\FileChangeLog. No history is automatically deleted.
+The app never writes to your monitored source files or sends data to an LLM/cloud.
+
+IMPORTANT: This package was built outside Windows. Core behaviour is tested;
+actual desktop Excel event capture requires the Windows acceptance check in docs.
+Use representative copies before operational use. This is not a complete audit trail.
+
+No admin installation is designed into this pilot. Your company's application
+control may still require IT to allow the Python runtime/launcher.
+
+See README.md and docs\WINDOWS-ACCEPTANCE.md for capture limits and diagnosis.

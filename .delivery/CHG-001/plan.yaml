@@ -1,0 +1,21 @@
+change_id: CHG-001
+route: Standard Change
+prohibited_paths:
+  - upload/
+  - user-history/
+checkpoints:
+  - id: local-recorder
+    allowed_paths: [recorder/, web/, docs/, tests/, verification/, .delivery/CHG-001/, .github/workflows/, run.py, requirements.txt, README.md, .gitignore, START-HERE.txt, build_windows_bundle.py, Start Recorder.bat, Open Recorder.bat, Start Quietly.vbs]
+    test_paths: [tests/]
+    tests:
+      - id: core
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 120
+      - id: syntax
+        command: [python, -m, compileall, -q, recorder, run.py, build_windows_bundle.py]
+        timeout_seconds: 60
+      - id: windows-acceptance
+        command: [python, tests/windows_probe.py]
+        timeout_seconds: 120
+test_config_changes:
+  - .github/workflows/verify.yml

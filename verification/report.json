@@ -1,0 +1,43 @@
+{
+  "version": "0.1.0",
+  "change_id": "CHG-001",
+  "candidate": "b9b808b0cf6ebce707d1a2151d53bc281da188cf",
+  "verification": "self-verification plus GitHub-hosted cross-platform CI; independent approval not claimed",
+  "local_tests": {
+    "command": [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tests",
+      "-v"
+    ],
+    "total": 36,
+    "passed": 35,
+    "skipped": 1,
+    "skip_reason": "Windows-only short-path check on Linux"
+  },
+  "github_run": {
+    "url": "https://github.com/lionellmisquitta/file-change-log/actions/runs/40324113942",
+    "windows_core": "success",
+    "linux_core": "success",
+    "windows_bundle_build_and_runtime_imports": "success"
+  },
+  "browser": {
+    "setup": "passed",
+    "real_saved_file_capture": "passed",
+    "notes": "passed",
+    "pause_resume": "passed",
+    "script_in_note_not_executed": "passed",
+    "desktop_and_mobile_layout": "passed",
+    "javascript_errors": 0
+  },
+  "not_verified": [
+    "Actual desktop Excel COM attachment and callbacks",
+    "Windows sign-out/sign-in startup",
+    "Real mapped drives and Google Drive provider on target laptop",
+    "Representative Eileen workbooks"
+  ],
+  "result": "PILOT_READY_FOR_WINDOWS_ACCEPTANCE; not production-certified"
+}
