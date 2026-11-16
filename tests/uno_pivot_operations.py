@@ -64,17 +64,31 @@ def main(input_file, output_dir, port):
                 raise RuntimeError("Pivot stage not saved: %s" % dest)
             emitted.append(str(dest))
         save(1, "pivot_created_sum")
-        pivot = pivots.getByName("RevenuePivot")
-        pivot.DataPilotFields.getByName("Revenue").Function = COUNT
-        pivot.refresh()
+        # LibreOffice does not reliably recalculate a pivot when Function is
+        # mutated on a previously inserted DataPilotFields object. Rebuild the
+        # native DataPilot descriptor for each saved configuration instead of
+        # claiming a Count operation when the output still sums Revenue.
+        def configure(aggregate, with_product=False, with_month=False):
+            modified = pivots.createDataPilotDescriptor()
+            modified.SourceRange = source.getCellRangeByName("A1:D49").RangeAddress
+            modified_fields = modified.DataPilotFields
+            modified_fields.getByName("Region").Orientation = ROW
+            metric = modified_fields.getByName("Revenue")
+            metric.Orientation = DATA
+            metric.Function = aggregate
+            if with_product:
+                modified_fields.getByName("Product").Orientation = COLUMN
+            if with_month:
+                modified_fields.getByName("Month").Orientation = PAGE
+            pivots.removeByName("RevenuePivot")
+            pivots.insertNewByName(
+                "RevenuePivot", sheet.getCellByPosition(0, 0).CellAddress, modified)
+
+        configure(COUNT)
         save(2, "aggregation_changed_count")
-        pivot = pivots.getByName("RevenuePivot")
-        pivot.DataPilotFields.getByName("Product").Orientation = COLUMN
-        pivot.refresh()
+        configure(COUNT, with_product=True)
         save(3, "product_column_added")
-        pivot = pivots.getByName("RevenuePivot")
-        pivot.DataPilotFields.getByName("Month").Orientation = PAGE
-        pivot.refresh()
+        configure(COUNT, with_product=True, with_month=True)
         save(4, "month_page_filter_added")
         pivots.removeByName("RevenuePivot")
         save(5, "pivot_deleted")
