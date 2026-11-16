@@ -271,6 +271,87 @@ class PhaseOneRegressionTests(Workspace):
         self.assertFalse(result['old_value_known'])
         self.assertEqual(result['operation'], 'observed_unknown_prior')
 
+class PilotFindingsRegressionTests(Workspace):
+    def test_reconciliation_labels_changes_made_while_down(self):
+        p = self.root/'working.csv'
+        p.write_text('before')
+        self.capture()
+        p.write_text('after')
+        worker = FolderWorker(self.root, self.store,
+                              {'settle_seconds': 0}, reconcile_on_first_scan=True)
+        worker.scan_once()
+        worker.scan_once()
+        events = [e for e in self.store.recent() if e['event'] == 'file_version_captured']
+        self.assertEqual(events[0]['classification'], 'changed_while_not_monitoring')
+
+    def test_baseline_and_total_snapshot_limits_have_distinct_events(self):
+        self.worker.settings.update(snapshot_budget_mb=10, baseline_budget_mb=0)
+        (self.root/'initial.txt').write_text('initial')
+        self.capture()
+        self.assertIn('baseline_allowance_reached', self.kinds())
+        self.assertNotIn('snapshot_budget_reached', self.kinds())
+        self.worker.settings['snapshot_budget_mb'] = .000001
+        (self.root/'later.txt').write_text('later')
+        self.capture()
+        self.assertIn('snapshot_budget_reached', self.kinds())
+
+    def test_high_storage_delays_intermediate_snapshots_without_losing_last(self):
+        p = self.root/'busy.csv'
+        p.write_text('first')
+        self.worker.settings.update(snapshot_budget_mb=10, baseline_budget_mb=5)
+        self.capture()
+        initial_count = self.kinds().count('file_version_captured')
+        self.store.snapshot_bytes = 7*1024*1024
+        p.write_text('second')
+        self.capture()
+        self.assertEqual(self.kinds().count('file_version_captured'), initial_count)
+        self.assertIn(canonical(p), self.worker.pending)
+        self.worker.last_snapshot_at[canonical(p)] -= 901
+        self.worker.scan_once()
+        self.assertEqual(self.kinds().count('file_version_captured'), initial_count+1)
+
+    def test_identical_baseline_workbooks_do_not_repeat_cell_dumps(self):
+        import openpyxl
+        a = self.root/'a.xlsx'
+        b = self.root/'b.xlsx'
+        book = openpyxl.Workbook()
+        book.active['A1'] = 'same'
+        book.save(a)
+        book.close()
+        b.write_bytes(a.read_bytes())
+        self.capture()
+        self.assertEqual(self.kinds().count('snapshot_initial_cells'), 1)
+
+    def test_used_range_growth_keeps_known_empty_excel_cells(self):
+        from types import SimpleNamespace as N
+        listener = ExcelListener(self.store, {'excel_cache_cells': 100,
+                            'excel_event_cells': 10}, lambda:[str(self.root)])
+        wb = N(Path=str(self.root), FullName=str(self.root/'book.xlsx'))
+        area = N(Row=1, Column=1, Rows=N(Count=1), Columns=N(Count=1),
+                 Value2=42, Formula=42)
+        original = N(CountLarge=1, Areas=[area], Address='$A$1')
+        sh = N(Parent=wb, CodeName='Sheet1', Name='Sheet', UsedRange=original)
+        wb.Worksheets = [sh]
+        listener.opened(wb, 'excel1')
+        sh.UsedRange = N(Address='$A$1:$Z$10')
+        target_area = N(Row=10, Column=26, Rows=N(Count=1),
+                        Columns=N(Count=1), Value2='new note', Formula='new note')
+        target = N(CountLarge=1, Areas=[target_area], Address='$Z$10')
+        listener.changed(sh, target, 'excel1')
+        first = next(e for e in self.store.recent() if e['event']=='excel_range_changed')
+        self.assertEqual(first['changes'][0]['operation'], 'added')
+        self.assertTrue(first['changes'][0]['old_value_known'])
+        self.assertNotIn('excel_old_values_invalidated', self.kinds())
+        target_area.Row = 7
+        target_area.Column = 3
+        target_area.Value2 = 'next'
+        target_area.Formula = 'next'
+        target.Address = '$C$7'
+        listener.changed(sh, target, 'excel1')
+        after = next(e for e in self.store.recent() if e['event']=='excel_range_changed')
+        self.assertEqual(after['changes'][0]['operation'], 'added')
+        self.assertTrue(after['changes'][0]['old_value_known'])
+
 class ConfigurationTests(Workspace):
     @unittest.skipUnless(os.name == 'nt', 'Windows short-path alias check')
     def test_windows_short_path_cannot_bypass_history_exclusion(self):
@@ -311,7 +392,7 @@ class HttpTests(unittest.TestCase):
         text='<script>alert(1)</script> — only Q3'
         with self.request('/api/note',{'text':text,'event_id':'abc','scope':'case_note'}) as r:self.assertEqual(r.status,200)
         with self.request('/api/events') as r:data=json.load(r)
-        self.assertEqual(data[0]['text'],text);self.assertTrue(data[0]['reusable_rule_not_approved'])
+        self.assertEqual(data[0]['text'],text);self.assertTrue(data[0]['context_confirmed']);self.assertNotIn('reusable_rule_not_approved',data[0])
         with self.request('/api/export') as r:self.assertIn('only Q3',r.read().decode())
     def test_note_empty_rejected(self):
         with self.assertRaises(urllib.error.HTTPError) as e:self.request('/api/note',{'text':''})
@@ -341,6 +422,41 @@ class HttpTests(unittest.TestCase):
         with self.request('/api/mode', {'mode': 'silent', 'floating': False}) as response:
             self.assertEqual(response.status, 200)
         self.assertEqual(self.recorder.status()['settings']['explanation_mode'], 'silent')
+
+    def test_pause_setting_persists(self):
+        with self.request('/api/pause', {'paused': True}) as response:
+            self.assertEqual(response.status, 200)
+        self.assertTrue(self.recorder.paused)
+        newer = Recorder(self.recorder.store.directory)
+        try:
+            self.assertTrue(newer.paused)
+        finally:
+            newer.store.close()
+
+    def test_evidence_range_references_only_selected_snapshots_and_hashes(self):
+        import io
+        import hashlib
+        import zipfile
+        a = self.recorder.store.snapshots/'old.txt'
+        b = self.recorder.store.snapshots/'current.txt'
+        a.write_bytes(b'old-data')
+        b.write_bytes(b'current-data')
+        with patch('recorder.store.now', return_value='2026-10-01T00:00:00.000+00:00'):
+            self.recorder.store.emit('file_version_captured', 'old.txt', snapshot='snapshots/old.txt')
+        with patch('recorder.store.now', return_value='2026-11-16T10:00:00.000+00:00'):
+            self.recorder.store.emit('file_version_captured', 'current.txt', snapshot='snapshots/current.txt')
+            self.recorder.store.emit('monitoring_gap', cause='restart')
+        url = '/api/handover?start=2026-11-16T00:00:00.000%2B00:00&end=2026-11-17T00:00:00.000%2B00:00&snapshots=1'
+        with self.request(url) as response:
+            payload = response.read()
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            names = set(archive.namelist())
+            self.assertIn('snapshots/current.txt', names)
+            self.assertNotIn('snapshots/old.txt', names)
+            self.assertIn(b'monitoring_gap', archive.read('gaps.jsonl'))
+            manifest = json.loads(archive.read('manifest.json'))
+            digest = hashlib.sha256(archive.read('snapshots/current.txt')).hexdigest()
+            self.assertEqual(manifest['sha256_by_member']['snapshots/current.txt'], digest)
 
     def test_page_has_no_external_scripts(self):
         with self.request('/') as r:

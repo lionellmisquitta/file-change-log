@@ -22,7 +22,7 @@ from .handover import build_handover
 
 DEFAULTS = dict(roots=[], scan_seconds=5, settle_seconds=2, snapshot_limit_mb=50,
                 snapshot_budget_mb=500, baseline_budget_mb=250,
-                explanation_mode='silent', floating_notes=False,
+                explanation_mode='silent', floating_notes=False, paused=False,
                 comparison_cells=200000, excel_cache_cells=200000, excel_event_cells=10000)
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
@@ -61,6 +61,7 @@ def validate_config(data, output):
         raise ValueError('Unknown explanation mode')
     config['explanation_mode'] = mode
     config['floating_notes'] = bool(data.get('floating_notes', False))
+    config['paused'] = bool(data.get('paused', False))
     if config['baseline_budget_mb'] > config['snapshot_budget_mb']:
         raise ValueError('Baseline allowance cannot exceed snapshot budget.')
     return config
@@ -70,7 +71,7 @@ class Recorder:
         self.store = Store(directory)
         self.config_path = self.store.directory/'settings.json'
         self.config = validate_config(json.loads(self.config_path.read_text(encoding='utf-8')) if self.config_path.exists() else {}, self.store.directory)
-        self.paused = False
+        self.paused = self.config['paused']
         self.workers = []
         self.excel = None
         self.started = now()
@@ -79,15 +80,17 @@ class Recorder:
 
     def start(self):
         latest = self.store.recent(limit=1)
+        self.reconcile_on_start = bool(latest)
         if latest:
             previous = latest[0]
             self.store.emit('monitoring_gap', last_observed_at=previous.get('timestamp_utc'),
                             resumed_at=now(), cause='previous_recorder_session_ended',
                             intermediate_events_not_recoverable=True)
-        self.store.emit('recorder_started', version='0.1.0', platform=sys.platform,
+        self.store.emit('recorder_started', version='0.2.1-beta', platform=sys.platform,
                         recorded_account=os.environ.get('USERNAME', os.environ.get('USER', 'unknown')),
                         capture_scope='selected_folders_only', missing_intermediate_history_not_recoverable=True)
         self.reconfigure_workers()
+        self.reconcile_on_start = False
         self.excel = ExcelListener(self.store, self.config, lambda: self.config['roots'], lambda: not self.paused)
         self.excel.thread.start()
         self.sync_notes_window()
@@ -97,7 +100,8 @@ class Recorder:
             w.stop.set()
         self.workers = []
         for root in self.config['roots']:
-            w = FolderWorker(root, self.store, self.config, enabled=lambda r=root: not self.paused and r in self.config['roots'])
+            w = FolderWorker(root, self.store, self.config, enabled=lambda r=root: not self.paused and r in self.config['roots'],
+                             reconcile_on_first_scan=getattr(self, 'reconcile_on_start', False))
             self.workers.append(w)
             w.begin()
 
@@ -105,6 +109,7 @@ class Recorder:
         new = validate_config(value, self.store.directory)
         with self.lock:
             self.config = new
+            self.paused = new['paused']
             atomic_json(self.config_path, new)
             self.store.emit('configuration_changed', roots=new['roots'], settings=new)
             if self.excel:
@@ -313,14 +318,14 @@ def make_handler(recorder, token, shutdown):
                     if not isinstance(text, str) or not text.strip() or len(text) > 20000:
                         raise ValueError('Enter an explanation of at most 20,000 characters.')
                     scope = data.get('scope', 'case_note')
-                    if scope not in {'case_note', 'proposed_rule'}:
+                    if scope != 'case_note':
                         raise ValueError('Unknown note scope')
                     events = recorder.store.recent(limit=40)
                     suggested = next((dict(event_id=e['id'], path=e.get('path', ''), event=e['event'])
                                       for e in events if e.get('path') and e['event'] != 'user_explanation'), None)
                     recorder.store.emit('user_explanation', text=text.strip(),
                                         linked_event_id=str(data.get('event_id', '')),
-                                        scope=scope, reusable_rule_not_approved=True,
+                                        scope=scope,
                                         context_suggested=suggested,
                                         context_confirmed=bool(data.get('event_id')),
                                         entered_using='dashboard')
@@ -329,6 +334,8 @@ def make_handler(recorder, token, shutdown):
                 elif route == '/api/pause':
                     paused = bool(data.get('paused'))
                     recorder.paused = paused
+                    recorder.config['paused'] = paused
+                    atomic_json(recorder.config_path, recorder.config)
                     if recorder.excel:
                         recorder.excel.reset.set()
                     recorder.store.emit('monitoring_paused' if paused else 'monitoring_resumed', capture_gap=True)

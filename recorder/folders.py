@@ -42,7 +42,7 @@ def walk_files(root, data_dir):
     return ScanInventory(found, unreadable)
 
 class FolderWorker:
-    def __init__(self, root, store, settings, enabled=lambda: True):
+    def __init__(self, root, store, settings, enabled=lambda: True, reconcile_on_first_scan=False):
         self.root = canonical(root)
         self.store = store
         self.settings = settings
@@ -51,6 +51,14 @@ class FolderWorker:
         self.pending = {}
         self.failures = {}
         self.baseline_paths = None
+        self.reconcile_on_first_scan = reconcile_on_first_scan
+        self.reconcile_paths = None
+        self.initial_cell_snapshots = set()
+        self.last_snapshot_at = {}
+        self.unsettled_since = {}
+        self.not_settling_emitted = set()
+        self.notification_last = {}
+        self.notification_skipped = {}
         self.health = dict(path=self.root, state='starting', last_scan=None, error=None)
         self.offline = None
         self.thread = threading.Thread(target=self.run, daemon=True, name='Folder scan')
@@ -71,7 +79,18 @@ class FolderWorker:
                     if worker.stop.is_set() or not worker.enabled() or ignored(event.src_path, worker.store.directory):
                         return
                     try:
+                        if event.event_type == 'modified':
+                            key = canonical(event.src_path)
+                            moment = time.monotonic()
+                            if moment-worker.notification_last.get(key, 0) < 3:
+                                worker.notification_skipped[key] = worker.notification_skipped.get(key, 0)+1
+                                return
+                            worker.notification_last[key] = moment
+                            suppressed = worker.notification_skipped.pop(key, 0)
+                        else:
+                            suppressed = 0
                         worker.store.emit('folder_notification', event.src_path, action=event.event_type,
+                                          suppressed_repeated_modifications=suppressed,
                                           destination=getattr(event, 'dest_path', None), is_directory=event.is_directory,
                                           source='filesystem_notification', contents_not_implied=True)
                     except Exception:
@@ -96,14 +115,21 @@ class FolderWorker:
             self.store.emit('snapshot_skipped_size', path, size=size, limit_bytes=maximum)
             return None
         with self.store.snapshot_lock:
-            if self.store.snapshot_bytes + size > budget or (initial and self.store.baseline_bytes + size > baseline_budget):
-                if not self.store.snapshot_suspended_issued:
+            total_hit = self.store.snapshot_bytes + size > budget
+            baseline_hit = initial and self.store.baseline_bytes + size > baseline_budget
+            if total_hit or baseline_hit:
+                if total_hit and not self.store.snapshot_suspended_issued:
                     self.store.snapshot_suspended_issued = True
                     self.store.emit('snapshot_budget_reached', path,
                                     used_bytes=self.store.snapshot_bytes,
-                                    total_budget_bytes=budget,
-                                    no_automatic_deletion=True)
-                self.store.emit('snapshot_skipped_budget', path, size=size, used_bytes=self.store.snapshot_bytes,
+                                    total_budget_bytes=budget, no_automatic_deletion=True)
+                if baseline_hit and not getattr(self.store, 'baseline_warning_issued', False):
+                    self.store.baseline_warning_issued = True
+                    self.store.emit('baseline_allowance_reached', path,
+                                    used_baseline_bytes=self.store.baseline_bytes,
+                                    baseline_limit_bytes=baseline_budget)
+                self.store.emit('snapshot_skipped_budget', path, size=size,
+                                used_bytes=self.store.snapshot_bytes,
                                 total_budget_bytes=budget, baseline=initial)
                 return None
             if shutil.disk_usage(self.store.directory).free < size + 1024*1024*1024:
@@ -168,6 +194,8 @@ class FolderWorker:
         old = self.store.inventory(self.root)
         if self.baseline_paths is None:
             self.baseline_paths = set(current) if not old else set()
+        if self.reconcile_paths is None:
+            self.reconcile_paths = set(current) if self.reconcile_on_first_scan and bool(old) else set()
         blocked = getattr(current, 'unreadable', ())
         if blocked:
             self.health['unreadable_paths'] = len(blocked)
@@ -183,7 +211,7 @@ class FolderWorker:
             if not sig[2] or not sig[3]:
                 continue
             matches = [source for source, prior in missing.items()
-                       if source not in used_old and prior[0][2:] == sig[2:] ]
+                       if source not in used_old and prior[0][0] == sig[0] and prior[0][2:] == sig[2:] ]
             if len(matches) == 1:
                 source = matches[0]
                 moved_from[destination] = source
@@ -219,22 +247,43 @@ class FolderWorker:
                 continue
             pending = self.pending.get(path)
             if pending is None or pending[0] != sig:
-                self.pending[path] = (sig, time.monotonic())
+                stamp = time.monotonic()
+                self.pending[path] = (sig, stamp)
+                self.unsettled_since.setdefault(path, stamp)
+                if stamp-self.unsettled_since[path] > 120 and path not in self.not_settling_emitted:
+                    self.store.emit('file_not_settling', path,
+                                    elapsed_seconds=round(stamp-self.unsettled_since[path]),
+                                    snapshot_not_yet_current=True)
+                    self.not_settling_emitted.add(path)
                 continue
             if time.monotonic() - pending[1] < float(self.settings.get('settle_seconds', 2)):
                 continue
             try:
+                budget = int(self.settings.get('snapshot_budget_mb', 500))*1024*1024
+                if (self.store.snapshot_bytes >= .7*budget and previous and
+                        time.monotonic()-self.last_snapshot_at.get(path, -1e9) < 900):
+                    # Keep the latest signature pending until spacing permits capture.
+                    continue
                 snapshot = self.capture(path, sig, initial=(previous is None and path in self.baseline_paths))
                 event = self.store.emit('file_version_captured', path, root=self.root,
-                    capture='saved_file_bytes' if snapshot else 'metadata_only', classification='moved_and_changed' if path in moved_from else ('changed' if previous else ('baseline' if path in self.baseline_paths else 'arrived')),
+                    capture='saved_file_bytes' if snapshot else 'metadata_only', classification=('moved_and_changed' if path in moved_from else
+                    'changed_while_not_monitoring' if previous and path in self.reconcile_paths else
+                    'arrived_while_not_monitoring' if not previous and path in self.reconcile_paths else
+                    'changed' if previous else 'baseline' if path in self.baseline_paths else 'arrived'),
                     size=sig[0], modified_time_ns=sig[1], snapshot=snapshot,
                     previous_snapshot=previous[1] if previous else None)
                 self.store.put_file(self.root, path, sig, snapshot or (previous[1] if previous else None))
                 self.pending.pop(path, None)
+                self.unsettled_since.pop(path, None)
+                self.not_settling_emitted.discard(path)
+                self.reconcile_paths.discard(path)
+                if snapshot:
+                    self.last_snapshot_at[path] = time.monotonic()
                 if path in self.failures:
                     self.store.emit('snapshot_recovered', path, attempts=self.failures[path]['attempts'])
                     del self.failures[path]
-                if snapshot and not previous and Path(path).suffix.lower() in {'.xlsx', '.xlsm'}:
+                if snapshot and not previous and snapshot not in self.initial_cell_snapshots and Path(path).suffix.lower() in {'.xlsx', '.xlsm'}:
+                    self.initial_cell_snapshots.add(snapshot)
                     # A first snapshot is an observation, not proof of when each
                     # cell was entered. Show populated cells without inventing edits.
                     try:
