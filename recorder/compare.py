@@ -33,7 +33,10 @@ def workbook_features(path):
     with zipfile.ZipFile(path) as archive:
         names = [x.lower() for x in archive.namelist()]
         result['has_pivot_tables'] = any(x.startswith('xl/pivottables/') for x in names)
-        result['has_power_query'] = any('microsoft.mashup' in x or x.startswith('xl/connections') for x in names)
+        result['has_power_query'] = any('microsoft.mashup' in x for x in names) or any(
+            b'microsoft.mashup' in archive.read(name)[:1024*1024].lower()
+            for name in archive.namelist() if name.lower() == 'xl/connections.xml'
+        )
         result['has_macros'] = any(x.endswith('/vbaproject.bin') for x in names)
         result['has_external_workbook_links'] = any(x.startswith('xl/externallinks/') for x in names)
     return result
