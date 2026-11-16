@@ -37,3 +37,30 @@ Full suite:
 `python -m unittest discover -s tests -v`
 
 Expected log labels: `PUBLIC_INPUTS`, `REAL_PIVOT_DIAGNOSTIC`, `REAL_PIVOT_AXIS_ORACLE`, `REAL_PIVOT_STATE_DELTA`, `REAL_PIVOT_SAME_PATH_REVISION`, `REAL_PIVOT_EXPORT`, `RETAIL_FORMULA_FILTER`, `RETAIL_SNAPSHOT_CHECK`.
+
+## Observed results: 16 November 2026
+
+QA run: https://github.com/lionellmisquitta/file-change-log/actions/runs/43884438327  
+Candidate code commit: `6b62b9f67a8b26a66b04dd5f46f0ab7cbc1fea86`  
+Ubuntu and Windows core suites PASSED; Windows package PASSED. **88 tests executed, 87 passed, 1 skipped** across the full suite.
+
+| Test | Actual observation |
+|---|---|
+| Public real workbook | 2,128,018 bytes, SHA-256 `e02c580d3bf44098b4810d16c247d08fc57cee2e88ad6dcc775dad5ca0ffd394` |
+| Real pivot definition count | **5** actual native `xl/pivotTables/*.xml` definitions, **5** extracted; names exactly match the XML, including two separate pivots named PivotTable3 |
+| Independent axis oracle | Each pivot's row/column/page/value-field element counts matched native source XML |
+| True source configuration | Example pivot sources use the worksheet Data with a source reference of `A1:V1048576`; this is saved metadata, not a claim that all million rows are populated |
+| Slicer handling | Slicer parts present; extractor correctly returns `partial_or_unsupported` with `slicers_not_fully_reconstructible` |
+| Pivot changed-state comparison | One existing pivot definition modified in a derived ZIP copy; `definition_changed` reported, never a user creation action |
+| Actual saved versions | Original SHA-256 and changed SHA-256 `5baf2190b36504bc3ac14d5f2f1e5b76464b260be7a51023af1443163a808296` both retained byte-for-byte |
+| Public supermarket CSV | 1,000 transactions, 131,528 bytes, SHA-256 `901aa9d1999df4c620b547a34b250912610a04342686c62cc2dfb82b163812a8` |
+| Formula/exception/filter | 1,001 changes; 997 formula changes represented by one relative A1 formula pattern; 4 individual changes; 0 unlisted; `H3` and `I4` manual exceptions preserved; Branch=A filter captured |
+| Evidence ZIP | One snapshot, four manifest member SHA-256s independently verified, 2,087,769-byte ZIP |
+
+**Historical failure disposition:** A stricter initial test incorrectly assumed the reverse-chronological `Store.recent` list was oldest-first. The final test compares the stored snapshots by SHA-256 independently of order. This was a **test defect**, not an application source repair.
+
+### What this does NOT prove
+
+The workbook is a real publicly authored XLSX containing genuine pivots and slicers, but the test does not launch desktop Excel or recreate the pivots in a fresh workbook. Excel pivot-cache refresh, underlying aggregate values, filter selections through slicer UI, macro behavior and complete business action replay are still **NOT VERIFIED**. The two public datasets are independent, not a single source-to-pivot pipeline.
+
+**Machine-readable results:** [quality-evidence/CHG-53/real-pivot-dataset-results.json](../quality-evidence/CHG-53/real-pivot-dataset-results.json).
