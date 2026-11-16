@@ -1,0 +1,81 @@
+{
+  "checkpoint_id": "CHG-53",
+  "evaluated_application_commit": "64e985b12ca088db609397360c911a0f948be409",
+  "qa_branch_verified_sha": "6b62b9f67a8b26a66b04dd5f46f0ab7cbc1fea86",
+  "run_id": 43884438327,
+  "run_url": "https://github.com/lionellmisquitta/file-change-log/actions/runs/43884438327",
+  "status": "PASSED_CANDIDATE_QA_ONLY",
+  "date": "2026-11-16",
+  "jobs": {
+    "core (ubuntu-latest)": "success",
+    "core (windows-latest)": "success",
+    "windows-package": "success"
+  },
+  "tests": {
+    "total": 88,
+    "passed": 87,
+    "skipped": 1,
+    "failed": 0
+  },
+  "dataset_sources": {
+    "real_pivots": {
+      "url": "https://raw.githubusercontent.com/danawoodruff/Excel/main/Pivots.xlsx",
+      "raw_bytes": 2128018,
+      "sha256": "e02c580d3bf44098b4810d16c247d08fc57cee2e88ad6dcc775dad5ca0ffd394"
+    },
+    "supermarket": {
+      "url": "https://raw.githubusercontent.com/selva86/datasets/master/supermarket_sales.csv",
+      "raw_bytes": 131528,
+      "rows": 1000,
+      "sha256": "901aa9d1999df4c620b547a34b250912610a04342686c62cc2dfb82b163812a8"
+    }
+  },
+  "observations": {
+    "real_pivot_ooxml_parts": 5,
+    "real_pivots_extracted": 5,
+    "axis_row_column_page_value_counts_match_native_xml": true,
+    "real_pivot_names": [
+      "PivotTable1",
+      "PivotTable2",
+      "PivotTable3",
+      "PivotTable3",
+      "PivotTable4"
+    ],
+    "real_pivot_slicers_present": true,
+    "real_pivot_completeness": "partial_or_unsupported",
+    "pivot_saved_definition_change_count": 1,
+    "reported_pivot_change_label": "definition_changed",
+    "original_and_modified_pivot_versions_exactly_retained": true,
+    "changed_pivot_workbook_sha256": "5baf2190b36504bc3ac14d5f2f1e5b76464b260be7a51023af1443163a808296",
+    "retail_transaction_rows": 1000,
+    "retail_comparison_total_changes": 1001,
+    "retail_formula_changes_pattern_encoded": 997,
+    "retail_formula_pattern_count": 1,
+    "retail_individual_change_details": 4,
+    "retail_unlisted_changes": 0,
+    "retail_manual_exception_addresses": [
+      "H3",
+      "I4"
+    ],
+    "retail_filter_branch_values": [
+      "A"
+    ],
+    "export_snapshots": 1,
+    "export_verified_sha256_members": 4,
+    "export_zip_bytes": 2087769
+  },
+  "first_stricter_run_failure": {
+    "run_id": 43884251779,
+    "class": "TEST_DEFECT",
+    "reason": "Test assumed Store.recent returned versions oldest-first; it actually returns newest-first. Corrected test by matching retained snapshots to raw content SHA-256s. No application code was altered."
+  },
+  "limitations": [
+    "Existing pivot workbook is independent of the supermarket CSV: no claim that pivots aggregate this CSV.",
+    "State modification is a derived OOXML edit, not a performed Excel UI action.",
+    "Slicer recreation is unsupported and correctly surfaced as partial_or_unsupported.",
+    "Pivot source ranges include A1:V1048576; large range performance and current actual populated row counts need specific evaluation.",
+    "Native desktop Excel COM callbacks, actual slicer interaction, pivot refresh/recalculation and full replay were not executed.",
+    "Public URLs use mutable main/master refs; saved hashes identify exact tested source bytes.",
+    "The tests use real native pivot OOXML, but not a reconstruction of pivot output values."
+  ]
+}
