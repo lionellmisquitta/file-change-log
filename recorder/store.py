@@ -18,6 +18,8 @@ class Store:
         self.snapshot_lock = threading.Lock()
         self.snapshot_bytes = sum(p.stat().st_size for p in self.snapshots.rglob('*') if p.is_file() and not p.name.endswith('.partial'))
         self.baseline_bytes = 0
+        self.snapshot_warning_issued = False
+        self.snapshot_suspended_issued = False
         self.error = None
         self.db = sqlite3.connect(self.directory / 'index.sqlite', check_same_thread=False)
         self.db.execute('PRAGMA journal_mode=WAL')
