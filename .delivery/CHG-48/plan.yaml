@@ -1,0 +1,24 @@
+change_id: CHG-48
+route: Standard Change
+prohibited_paths:
+  - .github/
+  - secrets/
+  - user-history/
+checkpoints:
+  - id: preserve-fpa-replay-evidence
+    allowed_paths:
+      - recorder/compare.py
+      - recorder/folders.py
+      - recorder/excel.py
+      - recorder/store.py
+      - recorder/app.py
+      - recorder/handover.py
+      - web/index.html
+      - tests/test_recorder.py
+      - .delivery/CHG-48/
+    test_paths:
+      - tests/
+    tests:
+      - id: core
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 120
