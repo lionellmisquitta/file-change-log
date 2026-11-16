@@ -97,6 +97,12 @@ class FolderWorker:
             return None
         with self.store.snapshot_lock:
             if self.store.snapshot_bytes + size > budget or (initial and self.store.baseline_bytes + size > baseline_budget):
+                if not self.store.snapshot_suspended_issued:
+                    self.store.snapshot_suspended_issued = True
+                    self.store.emit('snapshot_budget_reached', path,
+                                    used_bytes=self.store.snapshot_bytes,
+                                    total_budget_bytes=budget,
+                                    no_automatic_deletion=True)
                 self.store.emit('snapshot_skipped_budget', path, size=size, used_bytes=self.store.snapshot_bytes,
                                 total_budget_bytes=budget, baseline=initial)
                 return None
@@ -135,6 +141,10 @@ class FolderWorker:
                 else:
                     os.replace(temporary, destination)
                     self.store.snapshot_bytes += size
+                    if self.store.snapshot_bytes >= budget * .7 and not self.store.snapshot_warning_issued:
+                        self.store.snapshot_warning_issued = True
+                        self.store.emit('storage_warning', used_bytes=self.store.snapshot_bytes,
+                                        total_budget_bytes=budget, threshold_percent=70)
                     if initial:
                         self.store.baseline_bytes += size
                 return str(destination.relative_to(self.store.directory))
