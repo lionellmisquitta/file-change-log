@@ -302,6 +302,32 @@ class HttpTests(unittest.TestCase):
     def test_note_empty_rejected(self):
         with self.assertRaises(urllib.error.HTTPError) as e:self.request('/api/note',{'text':''})
         self.assertEqual(e.exception.code,400)
+    def test_evidence_zip_contains_complete_history_notes_and_manifest(self):
+        import io
+        import zipfile
+        self.recorder.store.emit('file_version_captured', 'a.csv', snapshot='snapshots/abc.csv')
+        self.recorder.store.emit('user_explanation', text='manual royalty adjustment', scope='case_note')
+        with self.request('/api/handover') as response:
+            body = response.read()
+        with zipfile.ZipFile(io.BytesIO(body)) as archive:
+            names = set(archive.namelist())
+            self.assertTrue({'events.jsonl', 'notes.jsonl', 'gaps.jsonl', 'manifest.json'} <= names)
+            manifest = json.loads(archive.read('manifest.json'))
+            self.assertEqual(manifest['counts']['notes'], 1)
+            self.assertIn(b'manual royalty adjustment', archive.read('notes.jsonl'))
+            self.assertEqual(manifest['counts']['events'], 2)
+            self.assertFalse(any(name.startswith('snapshots/') for name in names))
+
+    def test_silent_and_explanation_modes_persist(self):
+        with self.request('/api/mode', {'mode': 'explanation', 'floating': True}) as response:
+            self.assertEqual(response.status, 200)
+        config = json.loads(self.recorder.config_path.read_text(encoding='utf-8'))
+        self.assertEqual(config['explanation_mode'], 'explanation')
+        self.assertTrue(config['floating_notes'])
+        with self.request('/api/mode', {'mode': 'silent', 'floating': False}) as response:
+            self.assertEqual(response.status, 200)
+        self.assertEqual(self.recorder.status()['settings']['explanation_mode'], 'silent')
+
     def test_page_has_no_external_scripts(self):
         with self.request('/') as r:
             html=r.read().decode();self.assertIn("textContent=content",html);self.assertNotIn('<script src=',html)
