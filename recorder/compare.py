@@ -44,20 +44,45 @@ def compare_files(before, after, emit, path, max_cells=200000, max_changes=5000)
     ext = Path(after).suffix.lower()
     if ext in {'.xlsx', '.xlsm'}:
         old, new = workbook_cells(before, max_cells), workbook_cells(after, max_cells)
-        count = 0
+        sheet_counts = Counter()
+        column_counts = Counter()
         details = []
+        count = 0
         for sheet in sorted(set(old) | set(new)):
             if sheet not in old or sheet not in new:
                 emit('snapshot_sheet_added' if sheet not in old else 'snapshot_sheet_removed', path, sheet=sheet)
             for address in sorted(set(old.get(sheet, {})) | set(new.get(sheet, {}))):
-                a, b = old.get(sheet, {}).get(address), new.get(sheet, {}).get(address)
-                if a != b:
-                    count += 1
-                    if len(details) < max_changes:
-                        details.append(dict(sheet=sheet, address=address, old_value=a, new_value=b))
+                prior, value = old.get(sheet, {}).get(address), new.get(sheet, {}).get(address)
+                if prior == value:
+                    continue
+                count += 1
+                sheet_counts[sheet] += 1
+                column = ''.join(x for x in address if x.isalpha())
+                column_counts[(sheet, column)] += 1
+                wanted = isinstance(prior, str) and prior.startswith('=') and not (isinstance(value, str) and value.startswith('='))
+                details.append(dict(sheet=sheet, address=address, old_value=prior, new_value=value,
+                                    explanation_wanted=wanted))
+        # Typed values and manual overrides are more important than uniform formula fills.
+        if len(details) > max_changes:
+            details.sort(key=lambda x: (0 if x['explanation_wanted'] else
+                         2 if isinstance(x['new_value'], str) and x['new_value'].startswith('=') else 1,
+                         x['sheet'], x['address']))
+            details = details[:max_changes]
         emit('snapshot_cell_comparison', path, changes=details, total_changes=count,
-             details_truncated=count > max_changes, comparison='cell_coordinates_not_business_row_keys',
+             changes_per_sheet=dict(sheet_counts),
+             changes_per_sheet_column={sheet: {column: n for (name, column), n in column_counts.items() if name == sheet}
+                                       for sheet in sorted(sheet_counts)},
+             affected_sheets=sorted(sheet_counts), unlisted_changes=count-len(details),
+             details_truncated=count > max_changes,
+             explanation_wanted=any(x['explanation_wanted'] for x in details),
+             no_cell_differences_other_content_changed=count == 0,
+             comparison='cell_coordinates_not_business_row_keys',
              before_snapshot=str(before), after_snapshot=str(after))
+        if count == 0:
+            emit('no_cell_differences_other_content_changed', path,
+                 before_snapshot=str(before), after_snapshot=str(after),
+                 reason='Workbook bytes differ without changes in the compared cells',
+                 filter_pivot_format_or_metadata_change_possible=True)
     elif ext in {'.csv', '.tsv', '.txt', '.md', '.json', '.xml', '.yaml', '.yml', '.sql', '.log', '.ini', '.cfg'}:
         if max(Path(before).stat().st_size, Path(after).stat().st_size) > 2 * 1024 * 1024:
             emit('comparison_skipped', path, reason='Text comparison limit: 2 MiB; snapshots retained.')
