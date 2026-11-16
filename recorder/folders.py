@@ -282,6 +282,20 @@ class FolderWorker:
                     'changed' if previous else 'baseline' if path in self.baseline_paths else 'arrived'),
                     size=sig[0], modified_time_ns=sig[1], snapshot=snapshot,
                     previous_snapshot=previous[1] if previous else None)
+                # A matching content-addressed snapshot is proof of identical
+                # saved bytes, not proof of a user copy command. Only consider
+                # other retained paths observed before this new arrival.
+                if snapshot and previous is None:
+                    identical_sources = sorted(source for source, prior in old.items()
+                                               if source != path and prior[1] == snapshot)[:20]
+                    if identical_sources:
+                        self.store.emit('file_identical_content_observed', path,
+                                        snapshot=snapshot,
+                                        matching_paths=identical_sources,
+                                        matches_truncated=sum(1 for source, prior in old.items()
+                                            if source != path and prior[1] == snapshot) > len(identical_sources),
+                                        observation='same_saved_bytes_not_proof_of_copy_operation',
+                                        capture_event_id=event['id'])
                 if snapshot and Path(path).suffix.lower() in {'.xlsx', '.xlsm'}:
                     try:
                         flags = workbook_features(self.store.directory / snapshot)

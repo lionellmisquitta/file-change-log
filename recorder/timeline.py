@@ -10,6 +10,7 @@ TIMELINE_EVENTS = {
     "excel_pivot_definition_unavailable", "excel_save_requested",
     "excel_save_result", "excel_close_requested",
     "file_version_captured", "file_moved", "file_absent_on_scan",
+    "file_identical_content_observed",
     "snapshot_cell_comparison", "workbook_logic_observed",
     "workbook_logic_pivot_state_changes", "no_cell_differences_other_content_changed",
     "user_explanation", "folder_unavailable", "folder_reconnected",
@@ -59,6 +60,11 @@ def timeline(store, limit=200, path_filter=""):
             summary["details"] = {"sheet": row.get("sheet"),
                                   "pivot_name": row.get("pivot_name"),
                                   "completeness": row.get("completeness")}
+        elif kind == "file_identical_content_observed":
+            summary["details"] = {"matching_paths": row.get("matching_paths", []),
+                                  "matches_truncated": row.get("matches_truncated", False),
+                                  "observation": row.get("observation"),
+                                  "capture_event_id": row.get("capture_event_id")}
         elif kind == "snapshot_cell_comparison":
             summary["details"] = {"total_changes": row.get("total_changes"),
                                   "unlisted_changes": row.get("unlisted_changes", 0)}
