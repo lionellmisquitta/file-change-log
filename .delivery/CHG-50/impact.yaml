@@ -1,0 +1,26 @@
+change_id: CHG-50
+readiness: review
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - recorder/workbook_logic.py
+  - recorder/folders.py
+  - recorder/excel.py
+  - recorder/timeline.py
+  - recorder/app.py
+  - web/index.html
+  - tests/test_workbook_logic_timeline.py
+  - docs/WINDOWS-PIVOT-ACCEPTANCE.md
+regression_obligations:
+  - id: R1
+    reason: Saved pivot and filter extraction must preserve source and scope without inventing creation
+    test_id: full-regression
+  - id: R2
+    reason: Malformed OOXML and unsafe relationship targets must fail visibly
+    test_id: full-regression
+  - id: R3
+    reason: Filesystem snapshots and Excel event capture must retain earlier contracts
+    test_id: full-regression
+  - id: R4
+    reason: Timeline must be chronological, evidence-linked, scoped, and explicitly non-exhaustive
+    test_id: full-regression
