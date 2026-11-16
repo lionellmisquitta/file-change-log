@@ -15,12 +15,31 @@ class Store:
         for path in (self.logs, self.snapshots):
             path.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
+        self.snapshot_lock = threading.Lock()
+        self.snapshot_bytes = sum(p.stat().st_size for p in self.snapshots.rglob('*') if p.is_file() and not p.name.endswith('.partial'))
+        self.baseline_bytes = 0
+        self.snapshot_warning_issued = False
+        self.snapshot_suspended_issued = False
         self.error = None
         self.db = sqlite3.connect(self.directory / 'index.sqlite', check_same_thread=False)
         self.db.execute('PRAGMA journal_mode=WAL')
         self.db.execute('CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE, kind TEXT, path TEXT, body TEXT)')
         self.db.execute('CREATE TABLE IF NOT EXISTS inventory (root TEXT, path TEXT, signature TEXT, snapshot TEXT, PRIMARY KEY(root,path))')
         self.db.commit()
+        # Seal an interrupted last JSONL record so the next valid event cannot
+        # become attached to the torn line after an abrupt power loss.
+        torn = []
+        for log in sorted(self.logs.glob('events-*.jsonl')):
+            with log.open('rb+') as raw:
+                raw.seek(0, os.SEEK_END)
+                if raw.tell():
+                    raw.seek(-1, os.SEEK_END)
+                    if raw.read(1) != b'\n':
+                        raw.seek(0, os.SEEK_END)
+                        raw.write(b'\n')
+                        raw.flush()
+                        os.fsync(raw.fileno())
+                        torn.append(log.name)
         # Recover entries appended just before an interrupted SQLite insert.
         for log in sorted(self.logs.glob('events-*.jsonl')):
             with log.open(encoding='utf-8') as f:
@@ -31,6 +50,9 @@ class Store:
                     except (ValueError, KeyError):
                         self.error = f'Malformed/incomplete line found in {log.name}; original retained.'
         self.db.commit()
+        for filename in torn:
+            self.emit('torn_record_detected', filename=filename,
+                      explanation='Interrupted final JSONL record isolated; following events remain independent.')
 
     def _index(self, event):
         self.db.execute('INSERT OR IGNORE INTO events(id,kind,path,body) VALUES(?,?,?,?)',
@@ -47,6 +69,7 @@ class Store:
                     os.fsync(f.fileno())
                 self._index(event)
                 self.db.commit()
+                self.error = None
                 return event
             except Exception as e:
                 self.error = f'Unable to write event history: {type(e).__name__}: {e}'

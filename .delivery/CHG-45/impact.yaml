@@ -1,0 +1,27 @@
+change_id: CHG-45
+readiness: pilot_only_windows_acceptance_pending
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - recorder/app.py
+  - recorder/store.py
+  - recorder/folders.py
+  - recorder/excel.py
+  - recorder/handover.py
+  - recorder/notes_window.py
+  - web/index.html
+  - README.md
+  - tests/test_recorder.py
+regression_obligations:
+  - id: R1
+    reason: Events survive unexpected termination and interrupted JSONL writes
+    test_id: core
+  - id: R2
+    reason: Folder recursion and version capture respect finite storage limits
+    test_id: core
+  - id: R3
+    reason: Excel prior values never fabricated after unknown baselines
+    test_id: core
+  - id: R4
+    reason: Existing local API access controls and recording behavior remain intact
+    test_id: core

@@ -1,0 +1,20 @@
+change_id: CHG-42
+route: Standard Change
+prohibited_paths:
+  - user-history/
+  - upload/
+checkpoints:
+  - id: capture-new-entries
+    allowed_paths:
+      - recorder/folders.py
+      - tests/test_recorder.py
+      - .delivery/CHG-42/
+    test_paths:
+      - tests/test_recorder.py
+    tests:
+      - id: core
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 120
+      - id: windows-acceptance
+        command: [python, tests/windows_probe.py]
+        timeout_seconds: 120
