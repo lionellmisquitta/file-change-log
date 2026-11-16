@@ -12,6 +12,8 @@ targets:
   - web/index.html
   - tests/test_recorder.py
   - tests/test_public_dataset_stress.py
+  - tests/PUBLIC_DATASET_STRESS_TESTING.md
+  - quality-evidence/CHG-48/public-dataset-results.json
 regression_obligations:
   - id: R1
     reason: All sheets and columns must remain counted when comparison details are truncated
