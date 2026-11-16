@@ -18,7 +18,8 @@ from .store import Store
 from .folders import FolderWorker
 from .excel import ExcelListener
 
-DEFAULTS = dict(roots=[], scan_seconds=5, settle_seconds=2, snapshot_limit_mb=512,
+DEFAULTS = dict(roots=[], scan_seconds=5, settle_seconds=2, snapshot_limit_mb=50,
+                snapshot_budget_mb=500, baseline_budget_mb=250,
                 comparison_cells=200000, excel_cache_cells=200000, excel_event_cells=10000)
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
@@ -45,12 +46,15 @@ def validate_config(data, output):
         raise ValueError('Pilot supports up to 20 folder roots.')
     config['roots'] = roots
     for key, low, high in [('scan_seconds', 2, 3600), ('settle_seconds', 1, 300),
-                           ('snapshot_limit_mb', 1, 16384), ('comparison_cells', 100, 1000000),
+                           ('snapshot_limit_mb', 1, 16384), ('snapshot_budget_mb', 10, 16384),
+                           ('baseline_budget_mb', 0, 16384), ('comparison_cells', 100, 1000000),
                            ('excel_cache_cells', 100, 1000000), ('excel_event_cells', 1, 50000)]:
         value = int(data.get(key, DEFAULTS[key]))
         if not low <= value <= high:
             raise ValueError(f'{key} must be between {low} and {high}.')
         config[key] = value
+    if config['baseline_budget_mb'] > config['snapshot_budget_mb']:
+        raise ValueError('Baseline allowance cannot exceed snapshot budget.')
     return config
 
 class Recorder:
