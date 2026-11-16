@@ -1,0 +1,21 @@
+change_id: CHG-52
+route: Standard Change
+prohibited_paths:
+  - .github/
+  - requirements.txt
+  - setup/
+checkpoints:
+  - id: lineage-and-explanation
+    allowed_paths:
+      - recorder/folders.py
+      - recorder/timeline.py
+      - web/index.html
+      - tests/test_evidence_lineage.py
+      - docs/CHG-52-EVIDENCE-ACCEPTANCE.md
+      - .delivery/CHG-52/
+    test_paths:
+      - tests/
+    tests:
+      - id: full-regression
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 240
