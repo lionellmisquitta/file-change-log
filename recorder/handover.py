@@ -10,7 +10,8 @@ GAP_KINDS = {
     'excel_events_disabled', 'folder_unavailable', 'folder_scan_error',
     'snapshot_skipped_budget', 'snapshot_skipped_size', 'snapshot_skipped_disk_space',
     'snapshot_budget_reached', 'baseline_allowance_reached', 'storage_warning',
-    'snapshot_retry', 'snapshot_delayed', 'file_not_settling', 'comparison_failed',
+    'snapshot_retry', 'snapshot_delayed', 'snapshot_deferred_spacing',
+    'file_not_settling', 'comparison_failed',
     'excel_baseline_incomplete', 'excel_workbook_out_of_scope',
     'torn_record_detected', 'monitoring_paused', 'monitoring_resumed'
 }
