@@ -10,7 +10,7 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 from recorder.app import Recorder, make_handler, validate_config
-from recorder.common import inside, cell_address
+from recorder.common import inside, cell_address, canonical
 from recorder.compare import compare_files
 from recorder.excel import CellCache, ExcelListener
 from recorder.folders import FolderWorker
@@ -233,14 +233,14 @@ class PhaseOneRegressionTests(Workspace):
         p.write_bytes(b'something')
         self.capture()
         self.assertIn('snapshot_skipped_budget', self.kinds())
-        self.assertIsNone(self.store.inventory(self.worker.root)[str(p)][1])
+        self.assertIsNone(self.store.inventory(self.worker.root)[canonical(p)][1])
 
     def test_recursive_paste_inside_new_nested_directory(self):
         deep = self.root/'year'/'quarter'/'batch'
         deep.mkdir(parents=True)
         (deep/'payments.csv').write_text('invoice,value\n1,300\n')
         self.capture()
-        self.assertIn(str(deep/'payments.csv'), self.store.inventory(self.worker.root))
+        self.assertIn(canonical(deep/'payments.csv'), self.store.inventory(self.worker.root))
 
     def test_sparse_seeded_sheet_classifies_new_outside_used_range(self):
         cache = CellCache()
