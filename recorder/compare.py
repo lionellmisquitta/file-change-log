@@ -1,5 +1,7 @@
 import csv
 import json
+import zipfile
+from collections import Counter
 from pathlib import Path
 
 def workbook_cells(path, limit=200000):
@@ -22,6 +24,20 @@ def workbook_cells(path, limit=200000):
     finally:
         wb.close()
     return result
+
+def workbook_features(path):
+    result = dict(has_pivot_tables=False, has_power_query=False, has_macros=False,
+                  has_external_workbook_links=False)
+    if Path(path).suffix.lower() not in {'.xlsx', '.xlsm'}:
+        return result
+    with zipfile.ZipFile(path) as archive:
+        names = [x.lower() for x in archive.namelist()]
+        result['has_pivot_tables'] = any(x.startswith('xl/pivottables/') for x in names)
+        result['has_power_query'] = any('microsoft.mashup' in x or x.startswith('xl/connections') for x in names)
+        result['has_macros'] = any(x.endswith('/vbaproject.bin') for x in names)
+        result['has_external_workbook_links'] = any(x.startswith('xl/externallinks/') for x in names)
+    return result
+
 
 def compare_files(before, after, emit, path, max_cells=200000, max_changes=5000):
     """Supplemental coordinate comparison, not an inferred action or commercial rule."""
