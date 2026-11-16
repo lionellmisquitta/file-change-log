@@ -42,7 +42,7 @@ def walk_files(root, data_dir):
     return ScanInventory(found, unreadable)
 
 class FolderWorker:
-    def __init__(self, root, store, settings, enabled=lambda: True):
+    def __init__(self, root, store, settings, enabled=lambda: True, reconcile_on_first_scan=False):
         self.root = canonical(root)
         self.store = store
         self.settings = settings
@@ -51,6 +51,14 @@ class FolderWorker:
         self.pending = {}
         self.failures = {}
         self.baseline_paths = None
+        self.reconcile_on_first_scan = reconcile_on_first_scan
+        self.reconcile_paths = None
+        self.initial_cell_snapshots = set()
+        self.last_snapshot_at = {}
+        self.unsettled_since = {}
+        self.not_settling_emitted = set()
+        self.notification_last = {}
+        self.notification_skipped = {}
         self.health = dict(path=self.root, state='starting', last_scan=None, error=None)
         self.offline = None
         self.thread = threading.Thread(target=self.run, daemon=True, name='Folder scan')
@@ -71,7 +79,18 @@ class FolderWorker:
                     if worker.stop.is_set() or not worker.enabled() or ignored(event.src_path, worker.store.directory):
                         return
                     try:
+                        if event.event_type == 'modified':
+                            key = canonical(event.src_path)
+                            moment = time.monotonic()
+                            if moment-worker.notification_last.get(key, 0) < 3:
+                                worker.notification_skipped[key] = worker.notification_skipped.get(key, 0)+1
+                                return
+                            worker.notification_last[key] = moment
+                            suppressed = worker.notification_skipped.pop(key, 0)
+                        else:
+                            suppressed = 0
                         worker.store.emit('folder_notification', event.src_path, action=event.event_type,
+                                          suppressed_repeated_modifications=suppressed,
                                           destination=getattr(event, 'dest_path', None), is_directory=event.is_directory,
                                           source='filesystem_notification', contents_not_implied=True)
                     except Exception:
@@ -96,14 +115,21 @@ class FolderWorker:
             self.store.emit('snapshot_skipped_size', path, size=size, limit_bytes=maximum)
             return None
         with self.store.snapshot_lock:
-            if self.store.snapshot_bytes + size > budget or (initial and self.store.baseline_bytes + size > baseline_budget):
-                if not self.store.snapshot_suspended_issued:
+            total_hit = self.store.snapshot_bytes + size > budget
+            baseline_hit = initial and self.store.baseline_bytes + size > baseline_budget
+            if total_hit or baseline_hit:
+                if total_hit and not self.store.snapshot_suspended_issued:
                     self.store.snapshot_suspended_issued = True
                     self.store.emit('snapshot_budget_reached', path,
                                     used_bytes=self.store.snapshot_bytes,
-                                    total_budget_bytes=budget,
-                                    no_automatic_deletion=True)
-                self.store.emit('snapshot_skipped_budget', path, size=size, used_bytes=self.store.snapshot_bytes,
+                                    total_budget_bytes=budget, no_automatic_deletion=True)
+                if baseline_hit and not getattr(self.store, 'baseline_warning_issued', False):
+                    self.store.baseline_warning_issued = True
+                    self.store.emit('baseline_allowance_reached', path,
+                                    used_baseline_bytes=self.store.baseline_bytes,
+                                    baseline_limit_bytes=baseline_budget)
+                self.store.emit('snapshot_skipped_budget', path, size=size,
+                                used_bytes=self.store.snapshot_bytes,
                                 total_budget_bytes=budget, baseline=initial)
                 return None
             if shutil.disk_usage(self.store.directory).free < size + 1024*1024*1024:
@@ -168,6 +194,8 @@ class FolderWorker:
         old = self.store.inventory(self.root)
         if self.baseline_paths is None:
             self.baseline_paths = set(current) if not old else set()
+        if self.reconcile_paths is None:
+            self.reconcile_paths = set(current) if self.reconcile_on_first_scan and bool(old) else set()
         blocked = getattr(current, 'unreadable', ())
         if blocked:
             self.health['unreadable_paths'] = len(blocked)
@@ -183,7 +211,7 @@ class FolderWorker:
             if not sig[2] or not sig[3]:
                 continue
             matches = [source for source, prior in missing.items()
-                       if source not in used_old and prior[0][2:] == sig[2:] ]
+                       if source not in used_old and prior[0][0] == sig[0] and prior[0][2:] == sig[2:] ]
             if len(matches) == 1:
                 source = matches[0]
                 moved_from[destination] = source
