@@ -213,12 +213,14 @@ class ExcelListener:
             growth = (range_changed and
                       is_growth_outside_old_range(previous_range, current_range, cells))
             # A full-row/column edit is potentially structural; do not infer old values.
-            entire_axis = bool(target.EntireRow.CountLarge == sh.Cells.CountLarge or
-                               target.EntireColumn.CountLarge == sh.Cells.CountLarge)
         except Exception:
             current_range = None
             range_changed = False
             growth = False
+        try:
+            entire_axis = bool(target.EntireRow.CountLarge == sh.Cells.CountLarge or
+                               target.EntireColumn.CountLarge == sh.Cells.CountLarge)
+        except Exception:
             entire_axis = False
         if (range_changed and not growth) or entire_axis:
             self.cache.invalidate(key)
