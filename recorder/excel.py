@@ -334,7 +334,7 @@ class ExcelListener:
                       source_read_error=source_error,
                       row_fields=axis_fields(1), column_fields=axis_fields(2),
                       page_fields=axis_fields(3), data_fields=values,
-                      source='excel_desktop_event', completeness='partial_com_observation',
+                      completeness='partial_com_observation',
                       observation='pivot_updated_not_creation_proof')
         except Exception as exc:
             self.emit('excel_pivot_definition_unavailable', path, sheet=sheet,
