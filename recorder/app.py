@@ -90,6 +90,7 @@ class Recorder:
                         recorded_account=os.environ.get('USERNAME', os.environ.get('USER', 'unknown')),
                         capture_scope='selected_folders_only', missing_intermediate_history_not_recoverable=True)
         self.reconfigure_workers()
+        self.reconcile_on_start = False
         self.excel = ExcelListener(self.store, self.config, lambda: self.config['roots'], lambda: not self.paused)
         self.excel.thread.start()
         self.sync_notes_window()
