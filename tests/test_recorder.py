@@ -365,7 +365,7 @@ class HttpTests(unittest.TestCase):
         text='<script>alert(1)</script> — only Q3'
         with self.request('/api/note',{'text':text,'event_id':'abc','scope':'case_note'}) as r:self.assertEqual(r.status,200)
         with self.request('/api/events') as r:data=json.load(r)
-        self.assertEqual(data[0]['text'],text);self.assertTrue(data[0]['reusable_rule_not_approved'])
+        self.assertEqual(data[0]['text'],text);self.assertTrue(data[0]['context_confirmed']);self.assertNotIn('reusable_rule_not_approved',data[0])
         with self.request('/api/export') as r:self.assertIn('only Q3',r.read().decode())
     def test_note_empty_rejected(self):
         with self.assertRaises(urllib.error.HTTPError) as e:self.request('/api/note',{'text':''})
