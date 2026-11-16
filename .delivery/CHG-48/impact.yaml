@@ -11,6 +11,7 @@ targets:
   - recorder/handover.py
   - web/index.html
   - tests/test_recorder.py
+  - tests/test_public_dataset_stress.py
 regression_obligations:
   - id: R1
     reason: All sheets and columns must remain counted when comparison details are truncated
@@ -23,4 +24,7 @@ regression_obligations:
     test_id: core
   - id: R4
     reason: Formula overwrite and destructive Excel changes need explanation markers
+    test_id: core
+  - id: R5
+    reason: Downloaded public datasets must validate baseline dedupe, long formula fills, filter-only snapshots and export integrity
     test_id: core
