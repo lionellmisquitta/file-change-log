@@ -76,41 +76,63 @@ class FolderWorker:
         except Exception as e:
             self.store.emit('folder_notification_unavailable', self.root, reason=str(e), fallback='periodic_scan')
 
-    def capture(self, path, expected):
+    def capture(self, path, expected, initial=False):
         ext = Path(path).suffix.lower().lstrip('.')
         if ext not in SNAPSHOT_EXTENSIONS:
-            self.store.emit('snapshot_not_selected', path, reason='File type outside selected document/data snapshot scope')
+            self.store.emit('snapshot_not_selected', path, reason='Unsupported document/data file type')
             return None
-        maximum = int(self.settings.get('snapshot_limit_mb', 512)) * 1024 * 1024
-        if expected[0] > maximum:
-            self.store.emit('snapshot_skipped', path, reason=f'File exceeds configured {maximum//(1024*1024)} MiB per-file limit', size=expected[0])
+        size = expected[0]
+        maximum = int(self.settings.get('snapshot_limit_mb', 50)) * 1024 * 1024
+        budget = int(self.settings.get('snapshot_budget_mb', 500)) * 1024 * 1024
+        baseline_budget = int(self.settings.get('baseline_budget_mb', 250)) * 1024 * 1024
+        if size > maximum:
+            self.store.emit('snapshot_skipped_size', path, size=size, limit_bytes=maximum)
             return None
-        if shutil.disk_usage(self.store.directory).free < max(256*1024*1024, expected[0]*2):
-            raise OSError('Insufficient free space for snapshot; original left untouched')
-        parent = self.store.snapshots / hashlib.sha256(canonical(path).encode()).hexdigest()[:24]
-        parent.mkdir(exist_ok=True)
-        temporary = parent / (uuid.uuid4().hex + '.partial')
-        digest = hashlib.sha256()
-        try:
-            with open(path, 'rb') as src, temporary.open('xb') as dst:
-                for block in iter(lambda: src.read(1024*1024), b''):
-                    if self.stop.is_set():
-                        raise OSError('Capture cancelled')
-                    digest.update(block)
-                    dst.write(block)
-                dst.flush()
-                os.fsync(dst.fileno())
-            # Never label a changing file as a stable capture.
-            if signature(path) != expected:
-                raise OSError('File changed while copying; will retry')
-            destination = parent / (digest.hexdigest() + Path(path).suffix.lower())
-            if destination.exists():
-                temporary.unlink()
-            else:
-                os.replace(temporary, destination)
-            return str(destination.relative_to(self.store.directory))
-        finally:
-            temporary.unlink(missing_ok=True)
+        with self.store.snapshot_lock:
+            if self.store.snapshot_bytes + size > budget or (initial and self.store.baseline_bytes + size > baseline_budget):
+                self.store.emit('snapshot_skipped_budget', path, size=size, used_bytes=self.store.snapshot_bytes,
+                                total_budget_bytes=budget, baseline=initial)
+                return None
+            if shutil.disk_usage(self.store.directory).free < size + 1024*1024*1024:
+                self.store.emit('snapshot_skipped_disk_space', path, size=size, minimum_free_bytes=1024*1024*1024)
+                return None
+            temporary = self.store.snapshots / (uuid.uuid4().hex + '.partial')
+            digest = hashlib.sha256()
+            try:
+                # Windows: avoid blocking Excel's atomic replace/rename during Save.
+                if os.name == 'nt':
+                    import win32con
+                    import win32file
+                    handle = win32file.CreateFile(
+                        path, win32con.GENERIC_READ,
+                        win32con.FILE_SHARE_READ | win32con.FILE_SHARE_WRITE | win32con.FILE_SHARE_DELETE,
+                        None, win32con.OPEN_EXISTING, win32con.FILE_ATTRIBUTE_NORMAL, None)
+                    import msvcrt
+                    fd = msvcrt.open_osfhandle(int(handle.Detach()), os.O_RDONLY)
+                    src = os.fdopen(fd, 'rb')
+                else:
+                    src = open(path, 'rb')
+                with src, temporary.open('xb') as dst:
+                    for block in iter(lambda: src.read(1024*1024), b''):
+                        if self.stop.is_set():
+                            raise OSError('Capture cancelled')
+                        digest.update(block)
+                        dst.write(block)
+                    dst.flush()
+                    os.fsync(dst.fileno())
+                if signature(path) != expected:
+                    raise OSError('File changed while copying; will retry')
+                destination = self.store.snapshots / (digest.hexdigest() + Path(path).suffix.lower())
+                if destination.exists():
+                    temporary.unlink()
+                else:
+                    os.replace(temporary, destination)
+                    self.store.snapshot_bytes += size
+                    if initial:
+                        self.store.baseline_bytes += size
+                return str(destination.relative_to(self.store.directory))
+            finally:
+                temporary.unlink(missing_ok=True)
 
     def scan_once(self):
         if not self.enabled():
@@ -148,12 +170,12 @@ class FolderWorker:
             if time.monotonic() - pending[1] < float(self.settings.get('settle_seconds', 2)):
                 continue
             try:
-                snapshot = self.capture(path, sig)
+                snapshot = self.capture(path, sig, initial=(previous is None))
                 event = self.store.emit('file_version_captured', path, root=self.root,
-                    capture='saved_file_bytes', classification='changed' if previous else 'first_observed',
+                    capture='saved_file_bytes', classification='changed' if previous else ('baseline' if not old else 'arrived'),
                     size=sig[0], modified_time_ns=sig[1], snapshot=snapshot,
                     previous_snapshot=previous[1] if previous else None)
-                self.store.put_file(self.root, path, sig, snapshot)
+                self.store.put_file(self.root, path, sig, snapshot or (previous[1] if previous else None))
                 self.pending.pop(path, None)
                 if snapshot and not previous and Path(path).suffix.lower() in {'.xlsx', '.xlsm'}:
                     # A first snapshot is an observation, not proof of when each
@@ -171,7 +193,7 @@ class FolderWorker:
                         self.store.emit('snapshot_initial_cells', path, cells=details,
                                         total_populated_cells=count, details_truncated=count > maximum,
                                         observation='first_saved_version_not_proof_of_when_cells_were_entered',
-                                        snapshot=str(self.store.directory/snapshot))
+                                        snapshot=snapshot)
                     except Exception as e:
                         self.store.emit('snapshot_initial_cells_unavailable', path,
                                         reason=str(e), snapshot_retained=True)
