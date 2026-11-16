@@ -3,6 +3,7 @@ import json
 import zipfile
 from collections import Counter
 from pathlib import Path
+from .formula_patterns import pack_formula_runs
 
 def workbook_cells(path, limit=200000):
     import openpyxl
@@ -42,7 +43,7 @@ def workbook_features(path):
     return result
 
 
-def compare_files(before, after, emit, path, max_cells=200000, max_changes=5000):
+def compare_files(before, after, emit, path, max_cells=200000, max_changes=5000, compact_formulas=False):
     """Supplemental coordinate comparison, not an inferred action or commercial rule."""
     ext = Path(after).suffix.lower()
     if ext in {'.xlsx', '.xlsm'}:
@@ -68,6 +69,12 @@ def compare_files(before, after, emit, path, max_cells=200000, max_changes=5000)
                     change['explanation_wanted'] = True
                     change['explanation_reason'] = 'formula_replaced_by_constant'
                 details.append(change)
+        patterns, represented = (pack_formula_runs(details) if compact_formulas else ([], set()))
+        if compact_formulas:
+            details = [change for change in details if id(change) not in represented]
+        represented_count = sum(p['cell_count'] for p in patterns)
+        # The original before/after snapshots remain authoritative; compressed
+        # patterns represent final formula states only, not the editing command.
         # Typed values and manual overrides are more important than uniform formula fills.
         if len(details) > max_changes:
             details.sort(key=lambda x: (0 if x.get('explanation_wanted', False) else
@@ -78,8 +85,10 @@ def compare_files(before, after, emit, path, max_cells=200000, max_changes=5000)
              changes_per_sheet=dict(sheet_counts),
              changes_per_sheet_column={sheet: {column: n for (name, column), n in column_counts.items() if name == sheet}
                                        for sheet in sorted(sheet_counts)},
-             affected_sheets=sorted(sheet_counts), unlisted_changes=count-len(details),
-             details_truncated=count > max_changes,
+             affected_sheets=sorted(sheet_counts), unlisted_changes=count-len(details)-represented_count,
+             details_truncated=count-len(details)-represented_count > 0,
+             formula_patterns=patterns, formula_changes_represented_by_patterns=represented_count,
+             formula_patterns_require_snapshots_for_exact_reconstruction=bool(patterns),
              explanation_wanted=any(x.get('explanation_wanted', False) for x in details),
              no_cell_differences_other_content_changed=count == 0,
              comparison='cell_coordinates_not_business_row_keys',

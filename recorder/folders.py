@@ -344,7 +344,8 @@ class FolderWorker:
                 if snapshot and previous and previous[1] and snapshot != previous[1]:
                     try:
                         compare_files(self.store.directory/previous[1], self.store.directory/snapshot,
-                                      self.store.emit, path, max_cells=int(self.settings.get('comparison_cells', 200000)))
+                                      self.store.emit, path, max_cells=int(self.settings.get('comparison_cells', 200000)),
+                                      compact_formulas=True)
                     except Exception as e:
                         self.store.emit('comparison_failed', path, reason=str(e), snapshots_retained=True)
             except Exception as e:
