@@ -7,7 +7,7 @@ from .common import cell_address, canonical, clean, inside, now
 
 def range_bounds(address):
     """Return (min_col, min_row, max_col, max_row) for an A1 rectangle."""
-    parts = re.findall(r'\\$?([A-Z]+)\\$?(\\d+)', str(address).upper())
+    parts = re.findall(r'\$?([A-Z]+)\$?(\d+)', str(address).upper())
     if not parts:
         return None
     points = []
@@ -101,6 +101,7 @@ class ExcelListener:
         self.warned_paths = set()
         self.used_ranges = {}
         self.reseed_needed = set()
+        self.baseline_failure_reasons = {}
         self.thread = threading.Thread(target=self.run, daemon=True, name='Excel events')
 
     def scope(self, path):
@@ -177,16 +178,28 @@ class ExcelListener:
             used = sum(len(v) for v in self.cache.sheets.values())
             if used + len(baseline) > budget:
                 self.cache.invalidate(key)
+                self.reseed_needed.discard(key)
+                self.baseline_failure_reasons[key] = 'total_cache_budget'
                 self.emit('excel_baseline_incomplete', path, sheet=str(sh.Name),
                           reason='Total cache budget reached', old_values_may_be_unknown=True)
             else:
                 self.cache.seed(key, baseline)
                 self.used_ranges[key] = str(sh.UsedRange.Address)
                 self.reseed_needed.discard(key)
+                self.baseline_failure_reasons.pop(key, None)
         except Exception as e:
             self.cache.invalidate(key)
-            self.reseed_needed.add(key)
-            self.emit('excel_baseline_incomplete', path, sheet=str(sh.Name), reason=str(e), old_values_may_be_unknown=True)
+            reason = str(e)
+            non_retryable = isinstance(e, ValueError) and 'capture limit' in reason
+            if non_retryable:
+                self.reseed_needed.discard(key)
+            else:
+                self.reseed_needed.add(key)
+            if self.baseline_failure_reasons.get(key) != reason:
+                self.emit('excel_baseline_incomplete', path, sheet=str(sh.Name),
+                          reason=reason, old_values_may_be_unknown=True,
+                          retry_scheduled=not non_retryable)
+                self.baseline_failure_reasons[key] = reason
 
     def changed(self, sh, target, instance):
         path = self.path_of(sh.Parent)
@@ -213,7 +226,13 @@ class ExcelListener:
             growth = (range_changed and
                       is_growth_outside_old_range(previous_range, current_range, cells))
             # A full-row/column edit is potentially structural; do not infer old values.
-        except Exception:
+        except Exception as e:
+            # A broken parser must never silently make stale values look reliable.
+            self.cache.invalidate(key)
+            self.reseed_needed.add(key)
+            self.used_ranges.pop(key, None)
+            self.emit('excel_range_structure_check_failed', path, sheet=str(sh.Name),
+                      reason=str(e), old_values_may_be_unknown=True)
             current_range = None
             range_changed = False
             growth = False
