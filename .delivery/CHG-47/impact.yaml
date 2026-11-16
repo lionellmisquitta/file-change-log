@@ -1,0 +1,19 @@
+change_id: CHG-47
+readiness: pilot_only_windows_acceptance_pending
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - recorder/excel.py
+  - recorder/folders.py
+  - recorder/handover.py
+  - tests/test_recorder.py
+regression_obligations:
+  - id: R1
+    reason: Excel A1 range parsing must correctly distinguish growth from structural shifts
+    test_id: core
+  - id: R2
+    reason: Oversized Excel baselines must not retry every poll
+    test_id: core
+  - id: R3
+    reason: Snapshot deferral must be visible once per file and final stable version captured
+    test_id: core
