@@ -6,7 +6,7 @@ import time
 import uuid
 from pathlib import Path
 from .common import SNAPSHOT_EXTENSIONS, canonical, ignored, inside as inside_path, now
-from .compare import compare_files, workbook_cells
+from .compare import compare_files, workbook_cells, workbook_features
 
 def signature(path):
     s = os.stat(path)
@@ -281,6 +281,13 @@ class FolderWorker:
                     'changed' if previous else 'baseline' if path in self.baseline_paths else 'arrived'),
                     size=sig[0], modified_time_ns=sig[1], snapshot=snapshot,
                     previous_snapshot=previous[1] if previous else None)
+                if snapshot and Path(path).suffix.lower() in {'.xlsx', '.xlsm'}:
+                    try:
+                        flags = workbook_features(self.store.directory / snapshot)
+                        self.store.emit('workbook_snapshot_features', path, snapshot=snapshot, **flags)
+                    except Exception as error:
+                        self.store.emit('workbook_feature_inspection_failed', path, snapshot=snapshot,
+                                        reason=str(error), snapshot_retained=True)
                 self.store.put_file(self.root, path, sig, snapshot or (previous[1] if previous else None))
                 self.pending.pop(path, None)
                 self.unsettled_since.pop(path, None)

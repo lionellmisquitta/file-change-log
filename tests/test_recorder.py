@@ -426,6 +426,71 @@ class NovemberV2RetestRegressions(Workspace):
         self.assertEqual(self.kinds().count('snapshot_deferred_spacing'), 1)
         self.assertEqual(self.kinds().count('file_version_captured'), 2)
 
+class FpaEvidenceCompletenessTests(Workspace):
+    def test_comparison_reports_every_sheet_and_column_beyond_detail_limit(self):
+        import openpyxl
+        a = self.root/'a.xlsx'
+        b = self.root/'b.xlsx'
+        old = openpyxl.Workbook()
+        old.active.title = 'Orders'
+        old.create_sheet('Products')
+        old.save(a)
+        old['Orders']['A1'] = '=B1*2'
+        old['Orders']['A2'] = '=B2*2'
+        old['Orders']['A3'] = '=B3*2'
+        old['Products']['C7'] = 'manual exception'
+        old.save(b)
+        old.close()
+        observed = []
+        compare_files(a, b, lambda kind, path, **fields: observed.append((kind, fields)),
+                      str(b), max_changes=2)
+        details = next(event for kind, event in observed if kind == 'snapshot_cell_comparison')
+        self.assertEqual(details['total_changes'], 4)
+        self.assertEqual(details['unlisted_changes'], 2)
+        self.assertEqual(details['changes_per_sheet'], {'Orders':3, 'Products':1})
+        self.assertEqual(details['changes_per_sheet_column']['Products']['C'], 1)
+        self.assertIn('Products', details['affected_sheets'])
+        self.assertEqual(details['changes'][0]['sheet'], 'Products')
+
+    def test_workbook_metadata_flags_and_no_cell_differences(self):
+        import openpyxl
+        import zipfile
+        from recorder.compare import workbook_features
+        a = self.root/'first.xlsx'
+        b = self.root/'second.xlsx'
+        book = openpyxl.Workbook()
+        book.active['A1'] = 'unchanged'
+        book.save(a)
+        book.close()
+        with zipfile.ZipFile(a) as src, zipfile.ZipFile(b, 'w') as dst:
+            for entry in src.infolist():
+                dst.writestr(entry, src.read(entry.filename))
+            dst.writestr('xl/pivotTables/pivotTable1.xml', '<pivotTableDefinition/>')
+            dst.writestr('xl/externalLinks/externalLink1.xml', '<externalLink/>')
+            dst.writestr('xl/vbaProject.bin', b'not executable in test')
+            dst.writestr('xl/connections.xml', '<connections><connection connection="Provider=Microsoft.Mashup.OleDb.1"/></connections>')
+        flags = workbook_features(b)
+        self.assertTrue(all(flags.values()))
+        self.assertFalse(any(workbook_features(a).values()))
+        observed = []
+        compare_files(a, b, lambda kind, path, **fields: observed.append(kind), str(b))
+        self.assertIn('no_cell_differences_other_content_changed', observed)
+
+    def test_manifest_counts_skipped_and_deferred_in_date_range(self):
+        import zipfile
+        from recorder.handover import build_handover
+        self.store.emit('snapshot_skipped_budget', str(self.root/'orders.xlsx'))
+        self.store.emit('snapshot_deferred_spacing', str(self.root/'orders.xlsx'))
+        output = build_handover(self.store)
+        try:
+            with zipfile.ZipFile(output) as archive:
+                manifest = json.loads(archive.read('manifest.json'))
+                self.assertEqual(manifest['counts']['snapshots_skipped'], 1)
+                self.assertEqual(manifest['counts']['snapshots_deferred'], 1)
+            self.assertEqual(self.store.snapshot_gap_counts(), {'skipped': 1, 'deferred': 1})
+        finally:
+            output.unlink(missing_ok=True)
+
 class ConfigurationTests(Workspace):
     @unittest.skipUnless(os.name == 'nt', 'Windows short-path alias check')
     def test_windows_short_path_cannot_bypass_history_exclusion(self):

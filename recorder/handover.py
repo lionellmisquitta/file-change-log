@@ -25,6 +25,9 @@ def build_handover(store, start='', end='', include_snapshots=False):
     counts = {'events': 0, 'notes': 0, 'gaps': 0, 'malformed_lines': 0, 'snapshots': 0}
     hashes = {}
     snapshot_paths = set()
+    skipped_kinds = {'snapshot_skipped_budget', 'snapshot_skipped_size', 'snapshot_skipped_disk_space'}
+    skipped_in_range = 0
+    deferred_in_range = 0
     try:
         with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED,
                              compresslevel=5, allowZip64=True) as archive:
@@ -48,6 +51,11 @@ def build_handover(store, start='', end='', include_snapshots=False):
                                     continue
                                 if kind == 'gaps' and item.get('event') not in GAP_KINDS:
                                     continue
+                                if kind == 'events':
+                                    if item.get('event') in skipped_kinds:
+                                        skipped_in_range += 1
+                                    if item.get('event') == 'snapshot_deferred_spacing':
+                                        deferred_in_range += 1
                                 if kind == 'events' and include_snapshots:
                                     for field in SNAPSHOT_FIELDS:
                                         value = item.get(field)
@@ -78,7 +86,9 @@ def build_handover(store, start='', end='', include_snapshots=False):
                 'format': 'FileChangeLog Phase 1 evidence', 'schema_version': 2,
                 'source': 'local_observation_only', 'from_utc': start or None,
                 'to_utc': end or None, 'include_snapshots': bool(include_snapshots),
-                'counts': counts, 'sha256_by_member': hashes,
+                'counts': dict(counts, snapshots_skipped=skipped_in_range,
+                               snapshots_deferred=deferred_in_range),
+                'sha256_by_member': hashes,
                 'limitations': [
                     'Unsaved Excel edits require working desktop Excel COM events.',
                     'Changes during sleeps, pauses and downtime may be missing.',

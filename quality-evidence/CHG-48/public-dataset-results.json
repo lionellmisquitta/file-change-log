@@ -1,0 +1,108 @@
+{
+  "checkpoint_id": "CHG-48",
+  "verification_kind": "actual public dataset integration and existing core suite",
+  "verified_head_sha": "b96619d756b717fffff7f446fe30bc10f1427bad",
+  "run_id": 43849911614,
+  "run_url": "https://github.com/lionellmisquitta/file-change-log/actions/runs/43849911614",
+  "date": "2026-11-16",
+  "runner_jobs": {
+    "core (ubuntu-latest)": "success",
+    "core (windows-latest)": "success",
+    "windows-package": "success"
+  },
+  "tests": {
+    "run": 66,
+    "passed": 65,
+    "skipped": 1,
+    "failed": 0
+  },
+  "qa_status": "PASSED_PRE_MERGE",
+  "datasets": {
+    "diamonds": {
+      "rows": 53940,
+      "bytes": 2772143,
+      "sha256": "9574730b03aba241d899c4a97511c5061b19358fab89510774fb6c24168345c4",
+      "url": "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/diamonds.csv"
+    },
+    "taxis": {
+      "rows": 6433,
+      "bytes": 869349,
+      "sha256": "08d6d71784dbaa2651fee37fc03389754194c05d72d2d19cbc2c799dea6ac09d",
+      "url": "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/taxis.csv"
+    },
+    "titanic": {
+      "rows": 891,
+      "bytes": 57018,
+      "sha256": "81787d320d7f7b03df935e91de8bd19e11d45c5bbcab86ef4d4a76dc91b7d4f2",
+      "url": "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/titanic.csv"
+    },
+    "flights": {
+      "rows": 144,
+      "bytes": 2350,
+      "sha256": "237d834127d9c6355630d8f443a7a2377b5925923010009b59809ba0b67f4fac",
+      "url": "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/flights.csv"
+    }
+  },
+  "scenarios": [
+    {
+      "id": "QA-01",
+      "name": "baseline dedupe restart",
+      "result": "PASS",
+      "observed": {
+        "initial_files": 4,
+        "version_events": 5,
+        "snapshot_bytes": 3700860,
+        "elapsed_seconds": 0.015
+      }
+    },
+    {
+      "id": "QA-02",
+      "name": "taxis csv revision",
+      "result": "PASS",
+      "observed": {
+        "input_rows": 6433,
+        "initial_bytes": 869349,
+        "revised_bytes": 869350,
+        "comparison": "snapshot_text_comparison"
+      }
+    },
+    {
+      "id": "QA-03",
+      "name": "diamonds formula fill",
+      "result": "PASS",
+      "observed": {
+        "input_rows": 6500,
+        "total_changes": 6501,
+        "listed_changes": 5000,
+        "unlisted_changes": 1501,
+        "first_listed": "E3",
+        "event_json_bytes": 444482,
+        "elapsed_seconds": 0.342
+      }
+    },
+    {
+      "id": "QA-04",
+      "name": "flights filter only and export",
+      "result": "PASS",
+      "observed": {
+        "input_rows": 144,
+        "snapshots": 2,
+        "hashed_members": 5,
+        "export_zip_bytes": 17832
+      }
+    }
+  ],
+  "limitations": [
+    "Live COM not tested",
+    "No real Windows desktop operations",
+    "No full business replay claim",
+    "External dataset URLs may change",
+    "Tests use openpyxl rather than Excel for workbook generation"
+  ],
+  "prior_attempt": {
+    "run_id": 43849670057,
+    "reason": "Wrong branch under test: QA suite on main, candidate behavior on unmerged CHG-48; corrected by moving suite onto CHG-48",
+    "first_attempt_pr": 10
+  },
+  "documentation": "tests/PUBLIC_DATASET_STRESS_TESTING.md"
+}
