@@ -226,7 +226,7 @@ class FolderWorker:
             try:
                 snapshot = self.capture(path, sig, initial=(previous is None and path in self.baseline_paths))
                 event = self.store.emit('file_version_captured', path, root=self.root,
-                    capture='saved_file_bytes', classification='moved_and_changed' if path in moved_from else ('changed' if previous else ('baseline' if path in self.baseline_paths else 'arrived')),
+                    capture='saved_file_bytes' if snapshot else 'metadata_only', classification='moved_and_changed' if path in moved_from else ('changed' if previous else ('baseline' if path in self.baseline_paths else 'arrived')),
                     size=sig[0], modified_time_ns=sig[1], snapshot=snapshot,
                     previous_snapshot=previous[1] if previous else None)
                 self.store.put_file(self.root, path, sig, snapshot or (previous[1] if previous else None))
