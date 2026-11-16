@@ -29,9 +29,9 @@ class Store:
                 raw.seek(0, os.SEEK_END)
                 if raw.tell():
                     raw.seek(-1, os.SEEK_END)
-                    if raw.read(1) != b'\\n':
+                    if raw.read(1) != b'\n':
                         raw.seek(0, os.SEEK_END)
-                        raw.write(b'\\n')
+                        raw.write(b'\n')
                         raw.flush()
                         os.fsync(raw.fileno())
                         torn.append(log.name)
