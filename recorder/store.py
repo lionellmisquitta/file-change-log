@@ -83,6 +83,18 @@ class Store:
                                    (after, '%' + term + '%', min(limit, 1000))).fetchall()
             return [dict(json.loads(body), sequence=seq) for seq, body in rows]
 
+    def snapshot_gap_counts(self):
+        kinds = ('snapshot_skipped_budget', 'snapshot_skipped_size',
+                 'snapshot_skipped_disk_space', 'snapshot_deferred_spacing')
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT kind, COUNT(*) FROM events WHERE kind IN (?,?,?,?) GROUP BY kind',
+                kinds).fetchall()
+        counts = dict.fromkeys(kinds, 0)
+        counts.update(rows)
+        return dict(skipped=sum(counts[x] for x in kinds[:3]),
+                    deferred=counts['snapshot_deferred_spacing'])
+
     def inventory(self, root):
         with self.lock:
             return {p: (json.loads(sig), snap) for p, sig, snap in self.db.execute('SELECT path,signature,snapshot FROM inventory WHERE root=?', (root,))}
