@@ -27,7 +27,6 @@ class NotesWindow:
         import win32api
         import win32con
         import win32gui
-        from .common import now
         save_id = 1002
         edit_id = 1001
         controls = {}
@@ -73,16 +72,12 @@ class NotesWindow:
                 win32gui.PostQuitMessage(0)
                 return 0
             return win32gui.DefWindowProc(hwnd, message, wparam, lparam)
-        class_name = 'FileChangeLogNotesWindow'
+        class_name = 'FileChangeLogNotesWindow' + str(id(self))
         wc = win32gui.WNDCLASS()
         wc.lpszClassName = class_name
         wc.lpfnWndProc = handler
         wc.hInstance = win32api.GetModuleHandle(None)
-        try:
-            win32gui.RegisterClass(wc)
-        except Exception:
-            # Another instance of the class in this process may have registered it.
-            pass
+        win32gui.RegisterClass(wc)
         x = max(0, win32api.GetSystemMetrics(win32con.SM_CXSCREEN) - 380)
         y = max(0, win32api.GetSystemMetrics(win32con.SM_CYSCREEN) - 280)
         hwnd = win32gui.CreateWindowEx(
