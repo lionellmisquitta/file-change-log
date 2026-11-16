@@ -77,7 +77,7 @@ def compare_files(before, after, emit, path, max_cells=200000, max_changes=5000)
                                        for sheet in sorted(sheet_counts)},
              affected_sheets=sorted(sheet_counts), unlisted_changes=count-len(details),
              details_truncated=count > max_changes,
-             explanation_wanted=any(x['explanation_wanted'] for x in details),
+             explanation_wanted=any(x.get('explanation_wanted', False) for x in details),
              no_cell_differences_other_content_changed=count == 0,
              comparison='cell_coordinates_not_business_row_keys',
              before_snapshot=str(before), after_snapshot=str(after))
