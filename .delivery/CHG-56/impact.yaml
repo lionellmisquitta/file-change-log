@@ -1,0 +1,16 @@
+change_id: CHG-56
+readiness: review
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - README.md
+  - media/file-change-log-demo.gif
+  - media/file-change-log-linkedin.mp4
+  - media/file-change-log-cover.png
+regression_obligations:
+  - id: R1
+    reason: README demo and video links must resolve to committed media with correct binary hashes
+    test_id: full-regression
+  - id: R2
+    reason: Documentation/media only must not affect application runtime
+    test_id: full-regression
