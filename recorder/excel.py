@@ -108,9 +108,10 @@ class ExcelListener:
             if path and path not in self.warned_paths:
                 self.warned_paths.add(path)
                 # Do not ingest workbook content outside the user's roots.
-                self.store.emit('excel_workbook_out_of_scope', path,
-                                reason='Excel workbook path does not match selected local folders',
+                self.store.emit('excel_workbook_out_of_scope',
+                                reason='An open Excel workbook did not match any selected monitored folder',
                                 path_is_web_url=path.lower().startswith(('https://', 'http://')),
+                                workbook_path_not_retained=True,
                                 live_edits_not_captured=True)
             return
         book_key = (instance, canonical(path))
