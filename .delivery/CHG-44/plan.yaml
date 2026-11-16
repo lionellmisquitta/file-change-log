@@ -1,0 +1,16 @@
+change_id: CHG-44
+route: Standard Change
+prohibited_paths:
+  - recorder/
+  - user-history/
+checkpoints:
+  - id: copy-event-details
+    allowed_paths:
+      - web/index.html
+      - .delivery/CHG-44/
+    test_paths:
+      - tests/
+    tests:
+      - id: core
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 120
