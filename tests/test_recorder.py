@@ -468,7 +468,7 @@ class FpaEvidenceCompletenessTests(Workspace):
             dst.writestr('xl/pivotTables/pivotTable1.xml', '<pivotTableDefinition/>')
             dst.writestr('xl/externalLinks/externalLink1.xml', '<externalLink/>')
             dst.writestr('xl/vbaProject.bin', b'not executable in test')
-            dst.writestr('xl/connections.xml', '<connections/>')
+            dst.writestr('xl/connections.xml', '<connections><connection connection="Provider=Microsoft.Mashup.OleDb.1"/></connections>')
         flags = workbook_features(b)
         self.assertTrue(all(flags.values()))
         self.assertFalse(any(workbook_features(a).values()))
