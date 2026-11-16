@@ -1,5 +1,6 @@
 import argparse
 import hmac
+import hashlib
 import json
 import os
 import secrets
@@ -273,38 +274,59 @@ def main():
     if args.install_startup or args.remove_startup:
         set_startup(args.install_startup, args.data_dir)
         return
-    # Bind a single-instance port before any capture threads start. Use a local
-    # socket, not a stale PID file, to determine whether this recorder is alive.
-    gate = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        gate.bind(('127.0.0.1', 47653))
-        gate.listen(1)
-    except OSError:
-        gate.close()
-        session_file = args.data_dir/'session.json'
-        if not args.background and session_file.exists():
-            webbrowser.open(json.loads(session_file.read_text())['url'])
-        return
-    recorder = Recorder(args.data_dir)
+    # One process per data directory. Windows releases this kernel mutex on crash.
+    gate = None
+    if os.name == 'nt':
+        import win32api
+        import win32event
+        import winerror
+        identity = hashlib.sha256(str(args.data_dir.resolve()).casefold().encode('utf-8')).hexdigest()[:24]
+        gate = win32event.CreateMutex(None, False, 'Local\\FileChangeLog-' + identity)
+        if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
+            session_file = args.data_dir / 'session.json'
+            if not args.background:
+                try:
+                    session = json.loads(session_file.read_text(encoding='utf-8'))
+                    if session.get('state') == 'ready':
+                        webbrowser.open(session['url'])
+                    else:
+                        print('Recorder is already starting. Please reopen shortly.')
+                except (OSError, ValueError, KeyError):
+                    print('Recorder is already running; dashboard session is not available.')
+            win32api.CloseHandle(gate)
+            return
+    session_file = args.data_dir / 'session.json'
+    session_file.unlink(missing_ok=True)  # Discard stale URLs only after gaining the gate.
+    recorder = None
     server = None
     token = secrets.token_urlsafe(32)
     try:
+        atomic_json(session_file, dict(state='starting', pid=os.getpid(), started=now()))
+        recorder = Recorder(args.data_dir)
         server = ThreadingHTTPServer(('127.0.0.1', 0), make_handler(recorder, token, lambda: server.shutdown()))
         server.daemon_threads = True
         url = f'http://127.0.0.1:{server.server_port}/?token={token}'
-        atomic_json(args.data_dir/'session.json', dict(url=url, pid=os.getpid(), started=now()))
+        atomic_json(session_file, dict(state='ready', url=url, pid=os.getpid(), started=now()))
         recorder.start()
         if not args.background:
             webbrowser.open(url)
         server.serve_forever(poll_interval=.3)
     except KeyboardInterrupt:
         pass
+    except Exception:
+        import traceback
+        (args.data_dir/'startup-error.txt').write_text(traceback.format_exc(), encoding='utf-8')
+        raise
     finally:
-        recorder.close()
+        if recorder:
+            recorder.close()
+            recorder.store.close()
         if server:
             server.server_close()
-        gate.close()
-        (args.data_dir/'session.json').unlink(missing_ok=True)
+        session_file.unlink(missing_ok=True)
+        if gate is not None:
+            import win32api
+            win32api.CloseHandle(gate)
 
 if __name__ == '__main__':
     main()
