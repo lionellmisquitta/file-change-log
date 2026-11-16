@@ -295,6 +295,33 @@ class PilotFindingsRegressionTests(Workspace):
         self.capture()
         self.assertIn('snapshot_budget_reached', self.kinds())
 
+    def test_high_storage_delays_intermediate_snapshots_without_losing_last(self):
+        p = self.root/'busy.csv'
+        p.write_text('first')
+        self.worker.settings.update(snapshot_budget_mb=10, baseline_budget_mb=5)
+        self.capture()
+        initial_count = self.kinds().count('file_version_captured')
+        self.store.snapshot_bytes = 7*1024*1024
+        p.write_text('second')
+        self.capture()
+        self.assertEqual(self.kinds().count('file_version_captured'), initial_count)
+        self.assertIn(canonical(p), self.worker.pending)
+        self.worker.last_snapshot_at[canonical(p)] -= 901
+        self.worker.scan_once()
+        self.assertEqual(self.kinds().count('file_version_captured'), initial_count+1)
+
+    def test_identical_baseline_workbooks_do_not_repeat_cell_dumps(self):
+        import openpyxl
+        a = self.root/'a.xlsx'
+        b = self.root/'b.xlsx'
+        book = openpyxl.Workbook()
+        book.active['A1'] = 'same'
+        book.save(a)
+        book.close()
+        b.write_bytes(a.read_bytes())
+        self.capture()
+        self.assertEqual(self.kinds().count('snapshot_initial_cells'), 1)
+
     def test_used_range_growth_keeps_known_empty_excel_cells(self):
         from types import SimpleNamespace as N
         listener = ExcelListener(self.store, {'excel_cache_cells': 100,
