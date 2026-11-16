@@ -60,11 +60,14 @@ def compare_files(before, after, emit, path, max_cells=200000, max_changes=5000)
                 column = ''.join(x for x in address if x.isalpha())
                 column_counts[(sheet, column)] += 1
                 wanted = isinstance(prior, str) and prior.startswith('=') and not (isinstance(value, str) and value.startswith('='))
-                details.append(dict(sheet=sheet, address=address, old_value=prior, new_value=value,
-                                    explanation_wanted=wanted))
+                change = dict(sheet=sheet, address=address, old_value=prior, new_value=value)
+                if wanted:
+                    change['explanation_wanted'] = True
+                    change['explanation_reason'] = 'formula_replaced_by_constant'
+                details.append(change)
         # Typed values and manual overrides are more important than uniform formula fills.
         if len(details) > max_changes:
-            details.sort(key=lambda x: (0 if x['explanation_wanted'] else
+            details.sort(key=lambda x: (0 if x.get('explanation_wanted', False) else
                          2 if isinstance(x['new_value'], str) and x['new_value'].startswith('=') else 1,
                          x['sheet'], x['address']))
             details = details[:max_changes]
