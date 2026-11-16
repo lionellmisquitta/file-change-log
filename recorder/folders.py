@@ -247,22 +247,43 @@ class FolderWorker:
                 continue
             pending = self.pending.get(path)
             if pending is None or pending[0] != sig:
-                self.pending[path] = (sig, time.monotonic())
+                stamp = time.monotonic()
+                self.pending[path] = (sig, stamp)
+                self.unsettled_since.setdefault(path, stamp)
+                if stamp-self.unsettled_since[path] > 120 and path not in self.not_settling_emitted:
+                    self.store.emit('file_not_settling', path,
+                                    elapsed_seconds=round(stamp-self.unsettled_since[path]),
+                                    snapshot_not_yet_current=True)
+                    self.not_settling_emitted.add(path)
                 continue
             if time.monotonic() - pending[1] < float(self.settings.get('settle_seconds', 2)):
                 continue
             try:
+                budget = int(self.settings.get('snapshot_budget_mb', 500))*1024*1024
+                if (self.store.snapshot_bytes >= .7*budget and previous and
+                        time.monotonic()-self.last_snapshot_at.get(path, -1e9) < 900):
+                    # Keep the latest signature pending until spacing permits capture.
+                    continue
                 snapshot = self.capture(path, sig, initial=(previous is None and path in self.baseline_paths))
                 event = self.store.emit('file_version_captured', path, root=self.root,
-                    capture='saved_file_bytes' if snapshot else 'metadata_only', classification='moved_and_changed' if path in moved_from else ('changed' if previous else ('baseline' if path in self.baseline_paths else 'arrived')),
+                    capture='saved_file_bytes' if snapshot else 'metadata_only', classification=('moved_and_changed' if path in moved_from else
+                    'changed_while_not_monitoring' if previous and path in self.reconcile_paths else
+                    'arrived_while_not_monitoring' if not previous and path in self.reconcile_paths else
+                    'changed' if previous else 'baseline' if path in self.baseline_paths else 'arrived'),
                     size=sig[0], modified_time_ns=sig[1], snapshot=snapshot,
                     previous_snapshot=previous[1] if previous else None)
                 self.store.put_file(self.root, path, sig, snapshot or (previous[1] if previous else None))
                 self.pending.pop(path, None)
+                self.unsettled_since.pop(path, None)
+                self.not_settling_emitted.discard(path)
+                self.reconcile_paths.discard(path)
+                if snapshot:
+                    self.last_snapshot_at[path] = time.monotonic()
                 if path in self.failures:
                     self.store.emit('snapshot_recovered', path, attempts=self.failures[path]['attempts'])
                     del self.failures[path]
-                if snapshot and not previous and Path(path).suffix.lower() in {'.xlsx', '.xlsm'}:
+                if snapshot and not previous and snapshot not in self.initial_cell_snapshots and Path(path).suffix.lower() in {'.xlsx', '.xlsm'}:
+                    self.initial_cell_snapshots.add(snapshot)
                     # A first snapshot is an observation, not proof of when each
                     # cell was entered. Show populated cells without inventing edits.
                     try:
