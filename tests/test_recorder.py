@@ -226,6 +226,20 @@ class PhaseOneRegressionTests(Workspace):
         self.capture()
         self.assertEqual(self.store.snapshot_bytes, used)
 
+    def test_rename_preserves_file_identity_without_false_deletion(self):
+        source = self.root/'before.csv'
+        destination = self.root/'after.csv'
+        source.write_text('record,total\\n1,15\\n')
+        self.capture()
+        old_snapshot = self.store.inventory(self.worker.root)[canonical(source)][1]
+        source.rename(destination)
+        self.worker.scan_once()
+        new_inventory = self.store.inventory(self.worker.root)
+        self.assertNotIn(canonical(source), new_inventory)
+        self.assertEqual(new_inventory[canonical(destination)][1], old_snapshot)
+        self.assertIn('file_moved', self.kinds())
+        self.assertNotIn('file_absent_on_scan', self.kinds())
+
     def test_budget_skips_with_explicit_evidence(self):
         self.worker.settings['snapshot_budget_mb'] = 10
         self.worker.settings['baseline_budget_mb'] = 0
