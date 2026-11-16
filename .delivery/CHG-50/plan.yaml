@@ -1,0 +1,24 @@
+change_id: CHG-50
+route: Standard Change
+prohibited_paths:
+  - .github/
+  - requirements.txt
+  - setup/
+checkpoints:
+  - id: workbook-logic-and-timeline
+    allowed_paths:
+      - recorder/workbook_logic.py
+      - recorder/folders.py
+      - recorder/excel.py
+      - recorder/timeline.py
+      - recorder/app.py
+      - web/index.html
+      - tests/test_workbook_logic_timeline.py
+      - docs/WINDOWS-PIVOT-ACCEPTANCE.md
+      - .delivery/CHG-50/
+    test_paths:
+      - tests/
+    tests:
+      - id: full-regression
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 240

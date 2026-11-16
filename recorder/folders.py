@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 from .common import SNAPSHOT_EXTENSIONS, canonical, ignored, inside as inside_path, now
 from .compare import compare_files, workbook_cells, workbook_features
+from .workbook_logic import extract_workbook_logic, compare_workbook_logic
 
 def signature(path):
     s = os.stat(path)
@@ -288,6 +289,26 @@ class FolderWorker:
                     except Exception as error:
                         self.store.emit('workbook_feature_inspection_failed', path, snapshot=snapshot,
                                         reason=str(error), snapshot_retained=True)
+                    # Parsed structure is supplemental. A failure is never a lost
+                    # original snapshot and must not be mislabeled as a flags failure.
+                    try:
+                        current_logic = extract_workbook_logic(self.store.directory / snapshot)
+                        self.store.emit('workbook_logic_observed', path, snapshot=snapshot,
+                                        extraction=current_logic, observation='saved_workbook_state')
+                        if previous and previous[1] and previous[1] != snapshot:
+                            earlier = self.store.directory / previous[1]
+                            if earlier.is_file() and earlier.suffix.lower() in {'.xlsx', '.xlsm'}:
+                                prior_logic = extract_workbook_logic(earlier)
+                                differences = compare_workbook_logic(prior_logic, current_logic)
+                                if differences['pivot_changes']:
+                                    self.store.emit('workbook_logic_pivot_state_changes', path,
+                                                    before_snapshot=previous[1], after_snapshot=snapshot,
+                                                    **differences)
+                    except Exception as error:
+                        self.store.emit('workbook_logic_unavailable', path, snapshot=snapshot,
+                                        reason=type(error).__name__,
+                                        snapshot_retained=True,
+                                        reconstruction_verified=False)
                 self.store.put_file(self.root, path, sig, snapshot or (previous[1] if previous else None))
                 self.pending.pop(path, None)
                 self.unsettled_since.pop(path, None)

@@ -86,7 +86,7 @@ class Recorder:
             self.store.emit('monitoring_gap', last_observed_at=previous.get('timestamp_utc'),
                             resumed_at=now(), cause='previous_recorder_session_ended',
                             intermediate_events_not_recoverable=True)
-        self.store.emit('recorder_started', version='0.2.3-beta', platform=sys.platform,
+        self.store.emit('recorder_started', version='0.2.4-beta', platform=sys.platform,
                         recorded_account=os.environ.get('USERNAME', os.environ.get('USER', 'unknown')),
                         capture_scope='selected_folders_only', missing_intermediate_history_not_recoverable=True)
         self.reconfigure_workers()
@@ -271,6 +271,11 @@ def make_handler(recorder, token, shutdown):
                     self.respond(200, recorder.status())
                 elif url.path == '/api/events':
                     self.respond(200, recorder.store.recent(search=parse_qs(url.query).get('q', [''])[0]))
+                elif url.path == '/api/timeline':
+                    from .timeline import timeline
+                    opts = parse_qs(url.query)
+                    path_filter = opts.get('path', [''])[0][:300]
+                    self.respond(200, timeline(recorder.store, limit=200, path_filter=path_filter))
                 elif url.path == '/api/handover':
                     opts = parse_qs(url.query)
                     include = opts.get('snapshots', ['0'])[0] == '1'
