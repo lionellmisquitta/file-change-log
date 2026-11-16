@@ -1,0 +1,22 @@
+change_id: CHG-56
+route: Standard Change
+prohibited_paths:
+  - recorder/
+  - tests/
+  - web/
+  - .github/
+  - requirements.txt
+checkpoints:
+  - id: public-media
+    allowed_paths:
+      - README.md
+      - media/file-change-log-demo.gif
+      - media/file-change-log-linkedin.mp4
+      - media/file-change-log-cover.png
+      - .delivery/CHG-56/
+    test_paths:
+      - tests/
+    tests:
+      - id: full-regression
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 240
