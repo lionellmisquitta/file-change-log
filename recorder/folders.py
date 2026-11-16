@@ -55,6 +55,7 @@ class FolderWorker:
         self.reconcile_paths = None
         self.initial_cell_snapshots = set()
         self.last_snapshot_at = {}
+        self.spacing_announced = set()
         self.unsettled_since = {}
         self.not_settling_emitted = set()
         self.notification_last = {}
@@ -230,6 +231,7 @@ class FolderWorker:
                                 exact_deletion_time_unknown=True)
             self.store.drop_file(self.root, path)
             self.pending.pop(path, None)
+            self.spacing_announced.discard(path)
         # Capture recently modified working files first when baseline allowance is finite.
         for path, sig in sorted(current.items(), key=lambda item: item[1][1], reverse=True):
             if self.stop.is_set() or not self.enabled():
@@ -262,6 +264,13 @@ class FolderWorker:
                 budget = int(self.settings.get('snapshot_budget_mb', 500))*1024*1024
                 if (self.store.snapshot_bytes >= .7*budget and previous and
                         time.monotonic()-self.last_snapshot_at.get(path, -1e9) < 900):
+                    if path not in self.spacing_announced:
+                        self.store.emit('snapshot_deferred_spacing', path,
+                                        reason='Snapshot storage above 70% of budget',
+                                        deferral_seconds=900,
+                                        latest_saved_version_pending=True,
+                                        metadata_observation_continues=True)
+                        self.spacing_announced.add(path)
                     # Keep the latest signature pending until spacing permits capture.
                     continue
                 snapshot = self.capture(path, sig, initial=(previous is None and path in self.baseline_paths))
@@ -276,6 +285,7 @@ class FolderWorker:
                 self.pending.pop(path, None)
                 self.unsettled_since.pop(path, None)
                 self.not_settling_emitted.discard(path)
+                self.spacing_announced.discard(path)
                 self.reconcile_paths.discard(path)
                 if snapshot:
                     self.last_snapshot_at[path] = time.monotonic()
