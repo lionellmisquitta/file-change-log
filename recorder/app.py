@@ -78,6 +78,12 @@ class Recorder:
         self.notes_window = NotesWindow(self.store, on_close=self.hide_floating_notes)
 
     def start(self):
+        latest = self.store.recent(limit=1)
+        if latest:
+            previous = latest[0]
+            self.store.emit('monitoring_gap', last_observed_at=previous.get('timestamp_utc'),
+                            resumed_at=now(), cause='previous_recorder_session_ended',
+                            intermediate_events_not_recoverable=True)
         self.store.emit('recorder_started', version='0.1.0', platform=sys.platform,
                         recorded_account=os.environ.get('USERNAME', os.environ.get('USER', 'unknown')),
                         capture_scope='selected_folders_only', missing_intermediate_history_not_recoverable=True)
@@ -131,7 +137,10 @@ class Recorder:
 
     def status(self):
         return dict(started=self.started, paused=self.paused, settings=self.config, history=str(self.store.directory),
-                    storage_error=self.store.error, folders=[dict(w.health) for w in self.workers],
+                    storage_error=self.store.error,
+                    snapshot_bytes=self.store.snapshot_bytes,
+                    snapshot_budget_bytes=int(self.config.get('snapshot_budget_mb', 500))*1024*1024,
+                    folders=[dict(w.health) for w in self.workers],
                     excel=dict(self.excel.health) if self.excel else {}, startup=startup_enabled())
 
     def close(self):
@@ -180,6 +189,16 @@ def set_startup(enabled, directory):
         task.Principal.LogonType = 3  # TASK_LOGON_INTERACTIVE_TOKEN, no stored password.
         trigger = task.Triggers.Create(9)  # TASK_TRIGGER_LOGON.
         trigger.Enabled = True
+        # A sleeping/locked laptop may not log off for days. Relaunch on unlock
+        # only when not already running; the named mutex handles duplicates.
+        try:
+            import getpass
+            unlock = task.Triggers.Create(11)  # TASK_TRIGGER_SESSION_STATE_CHANGE
+            unlock.StateChange = 8  # TASK_SESSION_UNLOCK
+            unlock.UserId = getpass.getuser()
+            unlock.Enabled = True
+        except Exception:
+            pass  # Some managed endpoints disallow session-state triggers.
         settings = task.Settings
         settings.Enabled = True
         settings.StartWhenAvailable = True
