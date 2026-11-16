@@ -250,7 +250,23 @@ class ExcelListener:
         elif current_range is not None:
             self.used_ranges[key] = current_range
         changes = self.cache.change(key, cells)
-        self.emit('excel_range_changed', path, sheet=str(sh.Name), range=str(target.Address), changes=changes,
+        explanation_reasons = []
+        if len(changes) >= 100:
+            explanation_reasons.append('large_range_change')
+        if entire_axis:
+            explanation_reasons.append('whole_row_or_column_change')
+        for change in changes:
+            previous_formula = change.get('old_formula')
+            current_formula = change.get('new_formula')
+            if (change.get('old_value_known') and previous_formula and not current_formula
+                    and change.get('new_value') is not None):
+                change['explanation_wanted'] = True
+                change['explanation_reason'] = 'formula_replaced_by_constant'
+                if 'formula_replaced_by_constant' not in explanation_reasons:
+                    explanation_reasons.append('formula_replaced_by_constant')
+        self.emit('excel_range_changed', path, sheet=str(sh.Name), range=str(target.Address),
+                  explanation_wanted=bool(explanation_reasons),
+                  explanation_reasons=explanation_reasons, changes=changes,
                   details_captured=True, save_state='not_confirmed_saved', instance=instance,
                   action_type='not_inferred_from_range_change')
 
