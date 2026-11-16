@@ -113,6 +113,38 @@ class ComparisonTests(Workspace):
         e=next(e for e in self.store.recent() if e['event']=='snapshot_cell_comparison')
         self.assertEqual(e['total_changes'],2);self.assertFalse(e['details_truncated'])
         self.assertIn('snapshot_sheet_added',self.kinds());self.assertEqual(before.read_bytes(),original)
+    def test_first_snapshot_reports_existing_values_without_inventing_edits(self):
+        import openpyxl
+        p = self.root/'initial.xlsx'
+        wb = openpyxl.Workbook()
+        wb.active['A1'] = 12345
+        wb.active['B3'] = 'new entry'
+        wb.save(p)
+        wb.close()
+        self.capture()
+        event = next(e for e in self.store.recent() if e['event'] == 'snapshot_initial_cells')
+        self.assertEqual(event['total_populated_cells'], 2)
+        self.assertEqual({(c['address'], c['value']) for c in event['cells']},
+                         {('A1', 12345), ('B3', 'new entry')})
+        self.assertEqual(event['observation'],
+                         'first_saved_version_not_proof_of_when_cells_were_entered')
+        self.assertNotIn('snapshot_cell_comparison', self.kinds())
+
+    def test_newly_populated_cell_in_second_version_is_reported(self):
+        import openpyxl
+        p = self.root/'new-entry.xlsx'
+        wb = openpyxl.Workbook()
+        wb.active['A1'] = 100
+        wb.save(p)
+        self.capture()
+        wb.active['A2'] = 99999
+        wb.save(p)
+        wb.close()
+        self.capture()
+        event = next(e for e in self.store.recent() if e['event'] == 'snapshot_cell_comparison')
+        self.assertIn(dict(sheet='Sheet', address='A2', old_value=None, new_value=99999),
+                      event['changes'])
+
     def test_comparison_limit_is_explicit(self):
         import openpyxl
         paths=[self.base/'a.xlsx',self.base/'b.xlsx']

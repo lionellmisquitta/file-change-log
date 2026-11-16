@@ -6,7 +6,7 @@ import time
 import uuid
 from pathlib import Path
 from .common import SNAPSHOT_EXTENSIONS, canonical, ignored, now
-from .compare import compare_files
+from .compare import compare_files, workbook_cells
 
 def signature(path):
     s = os.stat(path)
@@ -155,6 +155,26 @@ class FolderWorker:
                     previous_snapshot=previous[1] if previous else None)
                 self.store.put_file(self.root, path, sig, snapshot)
                 self.pending.pop(path, None)
+                if snapshot and not previous and Path(path).suffix.lower() in {'.xlsx', '.xlsm'}:
+                    # A first snapshot is an observation, not proof of when each
+                    # cell was entered. Show populated cells without inventing edits.
+                    try:
+                        baseline = workbook_cells(self.store.directory/snapshot,
+                                                  int(self.settings.get('comparison_cells', 200000)))
+                        count = sum(len(cells) for cells in baseline.values())
+                        maximum = int(self.settings.get('comparison_details', 5000))
+                        details = [
+                            dict(sheet=sheet, address=address, value=value)
+                            for sheet, cells in baseline.items()
+                            for address, value in cells.items()
+                        ][:maximum]
+                        self.store.emit('snapshot_initial_cells', path, cells=details,
+                                        total_populated_cells=count, details_truncated=count > maximum,
+                                        observation='first_saved_version_not_proof_of_when_cells_were_entered',
+                                        snapshot=str(self.store.directory/snapshot))
+                    except Exception as e:
+                        self.store.emit('snapshot_initial_cells_unavailable', path,
+                                        reason=str(e), snapshot_retained=True)
                 if snapshot and previous and previous[1] and snapshot != previous[1]:
                     try:
                         compare_files(self.store.directory/previous[1], self.store.directory/snapshot,
