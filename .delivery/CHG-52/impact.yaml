@@ -1,0 +1,23 @@
+change_id: CHG-52
+readiness: review
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - recorder/folders.py
+  - recorder/timeline.py
+  - web/index.html
+  - tests/test_evidence_lineage.py
+  - docs/CHG-52-EVIDENCE-ACCEPTANCE.md
+regression_obligations:
+  - id: R1
+    reason: Identical saved bytes must carry a concrete snapshot reference, not a guessed copy command
+    test_id: full-regression
+  - id: R2
+    reason: Different byte content must not produce identical content lineage
+    test_id: full-regression
+  - id: R3
+    reason: Explanation prompts must favor flagged events only when explanation mode is active
+    test_id: full-regression
+  - id: R4
+    reason: Existing snapshots and timelines continue to work unchanged
+    test_id: full-regression
