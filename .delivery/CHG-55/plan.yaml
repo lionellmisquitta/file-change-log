@@ -1,0 +1,19 @@
+change_id: CHG-55
+route: Standard Change
+prohibited_paths:
+  - recorder/
+  - tests/
+  - web/
+  - .github/
+  - requirements.txt
+checkpoints:
+  - id: public-readme
+    allowed_paths:
+      - README.md
+      - .delivery/CHG-55/
+    test_paths:
+      - tests/
+    tests:
+      - id: full-regression
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 240

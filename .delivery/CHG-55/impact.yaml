@@ -1,0 +1,16 @@
+change_id: CHG-55
+readiness: review
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - README.md
+regression_obligations:
+  - id: R1
+    reason: Public readme describes exact packaged launcher names and preserves default history path
+    test_id: full-regression
+  - id: R2
+    reason: Public-facing features and pivot limitations must align with tested implementation
+    test_id: full-regression
+  - id: R3
+    reason: No application or CI code is changed by public documentation correction
+    test_id: full-regression

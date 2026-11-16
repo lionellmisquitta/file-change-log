@@ -1,72 +1,139 @@
 # File Change Log
 
-Record activity in selected Windows folders and detailed desktop Excel events, keep saved snapshots, and add explanations for later review.
+**See what changed. Preserve the evidence. Understand the process.**
 
-**First pilot:** automated Windows/Linux tests and Windows package checks pass. Actual desktop Excel event capture and automatic sign-in startup still need the target-machine acceptance check. This is an observational tool with documented gaps, not a complete audit trail.
+File Change Log is a local-first Windows application that observes changes in selected folders and Excel workbooks, retains saved file versions, and lets people add explanations to the resulting activity history.
 
-## Phase 1 pilot candidate (CHG-45) — 16 November 2026
+It is designed for workflows where understanding *how* a spreadsheet or collection of files evolved matters: financial and royalty operations, recurring reporting, reconciliation, data preparation, and process discovery.
 
-**Use [draft PR #5](https://github.com/lionellmisquitta/file-change-log/pull/5) and its GitHub Actions run, not the older October build below.** Download its Windows package artifact when CI finishes. This is a candidate, **not production acceptance**: actual Excel COM capture, OneDrive path handling, and the native floating window still require hands-on testing in Eileen's Windows session.
+**Current status:** `v0.2.4-beta` code on `main` · Windows x64 · Open-source repository · **Beta, not a complete audit trail**
 
-- Run **Start Recorder.bat** from the extracted Windows package; add the selected root folder. Subfolders are included. Default history is local under `%LOCALAPPDATA%\\FileChangeLog`, outside monitored roots.
-- Phase 1 defaults: **500 MiB total snapshot budget**, **250 MiB baseline allowance**, **50 MiB single-snapshot limit**, and **1 GiB minimum free-disk reserve**. These constrain snapshots, **not JSONL event logs**. All event and snapshot skip information stays local. There is no automated deletion.
-- The recorder stores distinct saved content in a flat content-addressed snapshot directory. Identical bytes are kept once. Under the cap it retains versions; once exhausted, **subsequent contents and diffs will be unavailable**, while lightweight events continue wherever disk space permits.
-- Set **Explanation mode** to show non-intrusive dashboard suggestions, and optionally **Show floating notes window**. Silent recording never prompts. Closing the browser tab does not stop the recorder.
-- Select **Download evidence ZIP** to export the complete event history with notes, gaps, and a manifest. Source snapshots are excluded unless the explicit `snapshots=1` option is used. No network/LLM upload occurs.
-- **Stop recorder completely** persists until the user manually starts the recorder again. Background sign-in/unlock triggers respect this Stop flag.
-- **Essential acceptance check:** while the recorder is active, open both an ordinary local workbook and any OneDrive-synced workbook actually used in the process; edit cells without saving and confirm `excel_range_changed` appears immediately. If it doesn't, do not assume live Excel recording works. Check `excel_workbook_out_of_scope` and the recorder health display. Sleep, lock, Excel macros disabling events, and inaccessible files may leave gaps.
-- Run an extended unattended session and verify that Excel saves normally while the recorder takes snapshots. A green CI suite or a produced Windows ZIP is **not** proof of live Excel integration or always-on-top window behavior.
+[**Get the Windows app**](https://github.com/lionellmisquitta/file-change-log/actions/workflows/verify.yml) · [**Releases**](https://github.com/lionellmisquitta/file-change-log/releases) · [**Report an issue**](https://github.com/lionellmisquitta/file-change-log/issues) · [**How capture works**](docs/CAPTURE-CONTRACT.md)
 
-## Try it
+> **Important:** Saved-workbook pivot extraction and automated pivot-operation comparisons have passed tests. End-to-end *live Microsoft Excel* COM recording, Excel slicer reconstruction, and complete process replay have **not** yet passed target-desktop acceptance testing.
 
-1. [Open the validated Windows build](https://github.com/lionellmisquitta/file-change-log/actions/runs/40324466170).
-2. Sign into GitHub, scroll to **Artifacts**, and download **FileChangeLog-Windows-x64**. Extract the artifact and then the application ZIP inside it if needed.
-3. Extract the application into a permanent local folder and double-click **Start Recorder.bat**.
-4. Add the folder paths and select **Save folders**.
-5. Select **Enable start at sign-in** for automatic startup at future logins.
+## Download and install
 
-Python and dependencies are included in the Windows x64 package. Company application-control policies may still require an allow-list decision. **Code → Download ZIP downloads source code, not the bundled Windows application.**
+### Windows x64 — no separate Python installation
 
-## Demonstrate it
+1. Open the [**latest Windows build workflow**](https://github.com/lionellmisquitta/file-change-log/actions/workflows/verify.yml). Select the newest **successful** run and scroll down to **Artifacts**.
+2. Download **`FileChangeLog-Windows-x64`**. GitHub may require you to sign in.
+3. Extract the downloaded artifact. If it contains `FileChangeLog-Windows-x64.zip`, extract that ZIP too.
+4. Move the extracted application folder to a **permanent local directory**, for example `C:\Users\your-name\Apps\FileChangeLog`. **Do not run from within a ZIP.**
+5. Double-click **`Start Recorder.bat`**. The dashboard opens in your browser.
+6. Add a full folder path per line under **Folders to watch** and click **Save folders**. Subfolders are included.
+7. Optionally select **Enable start at sign-in** to restart the recorder when your Windows user signs in.
 
-Use [the five minute demo guide](https://github.com/lionellmisquitta/file-change-log/blob/CHG-001/windows-recorder/docs/DEMO.md). The meeting package includes a synthetic browser walkthrough and a helper that creates disposable sample Excel files. The browser walkthrough is a replay, not live monitoring.
+The packaged app includes its own Python runtime. Admin rights are not normally required, but an organization-managed PC may require IT to allow the bundled runtime or BAT launcher.
 
-## What it captures
+**First-run check:** Open a disposable workbook inside a monitored folder, edit a cell, and save it. Verify `file_version_captured`; if the Excel listener is attached, check `excel_range_changed` as well. A saved-file event alone does **not** prove unsaved Excel edits are being captured.
 
-- File creation, modification, rename and deletion notifications, with periodic reconciliation scans.
-- Live desktop Excel cell/range changes and selected workbook/sheet events where Excel exposes them.
-- Old values where a baseline was observed; explicit unknowns and limits otherwise.
-- Saved snapshots of spreadsheets, documents and text/data files.
-- Structured JSONL logs and explanations for later analysis.
+### Upgrade without losing history
 
-It supports selected local, mapped/shared and Google Drive for desktop folders. Other file types receive file-event logging without snapshots. It never writes into the monitored source files. The current pilot has no mailbox ingestion, cloud upload, LLM processing or ADW integration.
+Stop the existing recorder from its dashboard, extract the new package into a permanent folder, and launch `Start Recorder.bat`. Verify monitored folder settings and startup configuration after upgrading.
 
-## Restarts and everyday use
+**Never delete `%LOCALAPPDATA%\FileChangeLog` during an upgrade.** This is the default location for your settings, JSONL event history, SQLite index and retained snapshots; it is separate from the application folder. Back up that directory before changing installations. Do not copy an active SQLite database while the recorder is writing to it.
 
-After **Enable start at sign-in**, the recorder reloads the selected folders and history automatically when that Windows user signs in. It reconnects to Excel when available and rescans saved files. Keep the extracted app in the same location.
+### Reopen, pause or stop
 
-| Situation | Behaviour |
+Closing the browser tab **does not stop recording**. Run `Open Recorder.bat` to reopen the dashboard. Use **Pause recording** for a documented gap, or **Stop recorder completely** to stop the process.
+
+**Security note:** If Windows Smart App Control or company policy blocks the launcher/runtime, contact your IT administrator for an approved allow-list process. Do not disable device protections to run the app.
+
+**Download note:** GitHub Actions artifacts expire and may require sign-in. A GitHub **Code → Download ZIP** is source code, **not** the packaged Windows app. Once a permanent release asset is published, use the [Releases page](https://github.com/lionellmisquitta/file-change-log/releases) for that version.
+
+## Why this exists
+
+Many operational processes are carried out through spreadsheets and files without a formal workflow engine. A final workbook shows the result, but usually does not explain which formulas were overwritten, which file version preceded it, how a pivot configuration evolved, or why someone made a particular change.
+
+File Change Log builds an **evidence trail**, not an invented narrative: observed changes and retained file versions first, deterministic comparisons second, human explanations when useful.
+
+## What it does today
+
+| Capability | What is captured |
 | --- | --- |
-| Windows restart followed by sign-in | Starts quietly if startup was enabled |
-| Browser tab closed | Recording continues |
-| Sleep and resume | Monitoring resumes; intermediate events cannot be reconstructed |
-| Shared drive unavailable | Logs a gap and retries; does not infer mass deletion |
-| Process crash or manual stop | Reopen Start Recorder.bat or wait for next sign-in; no crash watchdog yet |
+| **Folder activity** | Created, modified, moved and missing-on-scan files; filesystem notifications plus reconciliation scans |
+| **Saved versions** | Content-addressed snapshots of supported files, bounded by configurable size/storage limits |
+| **Live Excel observation** | Selected workbook, worksheet and changed-cell/range events where desktop Excel COM supplies them and listener attachment succeeds |
+| **Cell differences** | Saved XLSX/XLSM cell-coordinate comparisons, including formula changes and flagged formula-to-value overrides |
+| **Formula patterns** | Compact records for repeated relative/mixed-reference formula states, with individual exceptions preserved |
+| **Pivot tables** | Saved pivot definitions and changes to source, rows, columns, values, aggregations and page-field arrangement |
+| **Filters** | Supported worksheet and Excel Table saved filter metadata; unsupported structures explicitly flagged |
+| **Activity timeline** | Chronological recent observations with raw event IDs, workbook paths, snapshot links and known gaps |
+| **Optional explanations** | Notes linked to recorded events; Silent Mode does not interrupt work |
+| **Evidence export** | ZIP with raw history and checksums; retained snapshots included when explicitly selected |
 
-History defaults to `%LOCALAPPDATA%\FileChangeLog`. No history is automatically deleted. Saved snapshots and exported logs can be backed up; do not sync the active SQLite database. A log of an unsaved edit is not proof the workbook was saved.
+**What the recorder does not do:** It does not automatically upload your workbooks or logs to a cloud service or send them to an AI model. It does not modify monitored source files. It is not an infallible audit log and cannot infer every user action from a before/after comparison.
 
-## Share with a colleague
+## How it works
 
-Share this public repository link for the overview. For installation, attach the downloaded Windows application ZIP or use your approved shared-drive link. GitHub Actions downloads require GitHub sign-in and have retention limits. Do not share a `sandbox:` link copied from a ChatGPT conversation as the installation link.
+```text
+Selected folders and desktop Excel
+             |
+             +-- File-system notifications and periodic scans
+             |     -> saved snapshots (content-addressed)
+             |     -> saved-file cell/pivot/filter comparisons
+             |
+             +-- Excel COM event listener (Windows desktop)
+                   -> observed workbook, sheet, range and pivot-update events
+                              |
+                              v
+                    Local JSONL event history
+                     + SQLite index
+                              |
+                  Timeline, notes and evidence ZIP
+```
 
-Actual workbooks, captured logs, snapshots and business-specific plans stay outside this public repository.
+The recorder distinguishes **observed facts** from interpretations. For example, when a pivot first appears in a saved workbook, it records `first_observed`, not an unproven claim that a user clicked *Create PivotTable*. Identical saved bytes likewise do not prove a copy operation.
 
-## Source and technical detail
+History defaults to **`%LOCALAPPDATA%\FileChangeLog`**. Snapshot capture is bounded: exceeding a limit can leave metadata observations while preserving an explicit capture gap.
 
-- [Implementation branch](https://github.com/lionellmisquitta/file-change-log/tree/CHG-001/windows-recorder)
-- [Development PR](https://github.com/lionellmisquitta/file-change-log/pull/1)
-- [Implementation guide](https://github.com/lionellmisquitta/file-change-log/blob/CHG-001/windows-recorder/docs/IMPLEMENTATION.md)
-- [Capture contract](https://github.com/lionellmisquitta/file-change-log/blob/CHG-001/windows-recorder/docs/CAPTURE-CONTRACT.md)
-- [Windows acceptance checklist](https://github.com/lionellmisquitta/file-change-log/blob/CHG-001/windows-recorder/docs/WINDOWS-ACCEPTANCE.md)
+## Pivot-table recording: what's been verified
 
-The implementation is on the development branch and has not been merged into main. The main branch is the sharing overview.
+The automated tests include both a public Excel workbook containing genuine native pivot definitions and a real spreadsheet-engine operation sequence.
+
+- **5/5** genuine pivot definitions discovered from a public workbook, with axis-field counts checked against the underlying XML.
+- Automated creation, Sum → Count, column-field addition, page-field addition, and removal across **five saved-state transitions**.
+- **Six workbook versions** retained in the automated operation sequence; snapshot bytes and evidence-ZIP checksums verified.
+- A separate **1,000-transaction** public-data comparison accounted for all **1,001** tested cell changes, with repeated formula patterns and manual exceptions preserved.
+
+The interactive operation sequence was performed by **LibreOffice Calc through UNO**, then recorded as saved XLSX versions. That is meaningful saved-state integration coverage, **not** proof of Microsoft Excel's live COM event ordering or of complete pivot/slicer recreation.
+
+[Real pivot automated QA](docs/PIVOT-OPERATIONS-AUTOMATED-QA.md) · [Public-data QA](tests/REAL_PIVOT_PUBLIC_DATA_QA.md) · [Windows Excel acceptance checklist](docs/WINDOWS-PIVOT-ACCEPTANCE.md)
+
+## Current beta limitations
+
+- **Live Microsoft Excel COM:** Actual desktop Excel listener attachment and unsaved pivot activity still require end-to-end testing on a Windows machine with Microsoft Excel installed.
+- **Slicers and advanced pivot behavior:** Slicer selections/relationships, some grouped fields, refresh causes and complete pivot replay are not yet reconstructed.
+- **Coverage gaps:** Large changes, inaccessible files, pauses, locked network folders, sleep, process interruptions and snapshot limits can make a recording incomplete. Known gaps are logged rather than fabricated.
+- **Snapshot semantics:** A saved workbook comparison shows changed state, **not necessarily the command or person responsible**.
+- **Platform:** Windows x64 is the target application platform; Linux is used in automated test infrastructure.
+
+Use representative copies while evaluating. Do not rely on the beta as the sole regulatory or legal audit record.
+
+## Test and develop
+
+The source application is Python-based. On a development machine with Python and the project requirements installed:
+
+```bash
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -v
+```
+
+GitHub Actions runs Windows and Ubuntu regression suites and packages the Windows application. A separate workflow runs real pivot-operation tests through headless LibreOffice Calc and its UNO interface.
+
+[Regression and Windows packaging](https://github.com/lionellmisquitta/file-change-log/actions/workflows/verify.yml) · [Real pivot operation tests](https://github.com/lionellmisquitta/file-change-log/actions/workflows/real-pivot-operations.yml)
+
+## Project direction
+
+The longer-term goal is to move from **evidence collection → deterministic workbook logic extraction → explainable workflow reconstruction**. Automated replay, comprehensive pivot/slicer reconstruction and process inference are **future work**, not features of this beta.
+
+## Feedback and contributions
+
+Have a reproducible problem, missing event, or workflow you'd like this tool to understand? [Open a GitHub Issue](https://github.com/lionellmisquitta/file-change-log/issues) and include the Windows version, tested application build, expected/actual result, and sanitized event details.
+
+**Do not attach confidential workbooks, customer data, passwords or raw business activity logs to public issues.**
+
+---
+
+**File Change Log** — local-first operational evidence for file and Excel workflows. Built for transparency about *what was observed, what was missed, and what remains unknown*.
