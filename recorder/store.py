@@ -15,6 +15,9 @@ class Store:
         for path in (self.logs, self.snapshots):
             path.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
+        self.snapshot_lock = threading.Lock()
+        self.snapshot_bytes = sum(p.stat().st_size for p in self.snapshots.rglob('*') if p.is_file() and not p.name.endswith('.partial'))
+        self.baseline_bytes = 0
         self.error = None
         self.db = sqlite3.connect(self.directory / 'index.sqlite', check_same_thread=False)
         self.db.execute('PRAGMA journal_mode=WAL')
