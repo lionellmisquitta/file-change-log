@@ -286,8 +286,12 @@ class FolderWorker:
                     try:
                         flags = workbook_features(self.store.directory / snapshot)
                         self.store.emit('workbook_snapshot_features', path, snapshot=snapshot, **flags)
-                        # File-byte evidence is the authority. Parsed definitions
-                        # describe observed state, not inferred user commands.
+                    except Exception as error:
+                        self.store.emit('workbook_feature_inspection_failed', path, snapshot=snapshot,
+                                        reason=str(error), snapshot_retained=True)
+                    # Parsed structure is supplemental. A failure is never a lost
+                    # original snapshot and must not be mislabeled as a flags failure.
+                    try:
                         current_logic = extract_workbook_logic(self.store.directory / snapshot)
                         self.store.emit('workbook_logic_observed', path, snapshot=snapshot,
                                         extraction=current_logic, observation='saved_workbook_state')
@@ -300,10 +304,11 @@ class FolderWorker:
                                     self.store.emit('workbook_logic_pivot_state_changes', path,
                                                     before_snapshot=previous[1], after_snapshot=snapshot,
                                                     **differences)
-
                     except Exception as error:
-                        self.store.emit('workbook_feature_inspection_failed', path, snapshot=snapshot,
-                                        reason=str(error), snapshot_retained=True)
+                        self.store.emit('workbook_logic_unavailable', path, snapshot=snapshot,
+                                        reason=type(error).__name__,
+                                        snapshot_retained=True,
+                                        reconstruction_verified=False)
                 self.store.put_file(self.root, path, sig, snapshot or (previous[1] if previous else None))
                 self.pending.pop(path, None)
                 self.unsettled_since.pop(path, None)
