@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from recorder.folders import FolderWorker
+from recorder.common import canonical
 from recorder.store import Store
 from recorder.timeline import timeline
 
@@ -24,12 +25,12 @@ class ExactContentLineageTests(unittest.TestCase):
                 worker.scan_once();worker.scan_once()
                 events = store.recent(100)
                 e = next(x for x in events if x["event"] == "file_identical_content_observed")
-                self.assertEqual(e["path"], str(duplicate))
-                self.assertEqual(e["matching_paths"], [str(original)])
+                self.assertEqual(e["path"], canonical(duplicate))
+                self.assertEqual(e["matching_paths"], [canonical(original)])
                 self.assertEqual(e["observation"], "same_saved_bytes_not_proof_of_copy_operation")
                 captures = [x for x in events if x["event"] == "file_version_captured"]
                 self.assertIn(e["capture_event_id"], [x["id"] for x in captures])
-                self.assertEqual(e["snapshot"], next(x for x in captures if x["path"] == str(original))["snapshot"])
+                self.assertEqual(e["snapshot"], next(x for x in captures if x["path"] == canonical(original))["snapshot"])
                 t = timeline(store, path_filter="new_copy.csv")
                 linked = next(x for x in t["entries"] if x["event"] == "file_identical_content_observed")
                 self.assertEqual(linked["details"]["capture_event_id"], e["capture_event_id"])
@@ -54,7 +55,7 @@ class ExactContentLineageTests(unittest.TestCase):
                 store.close()
 
     def test_prompt_selector_is_optional_and_priority_ordered(self):
-        html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text()
+        html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding='utf-8')
         self.assertIn("e.event==='excel_range_changed'&&e.explanation_wanted===true", html)
         self.assertIn("e.event==='snapshot_cell_comparison'&&e.explanation_wanted===true", html)
         self.assertIn("e.event==='excel_sheet_delete_requested'", html)
