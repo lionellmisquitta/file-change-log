@@ -291,6 +291,56 @@ class ExcelListener:
         self.throttles[tag] = time.monotonic()
         self.emit(kind, path, sheet=current, instance=instance, individual_cell_results_not_implied=True)
 
+    def pivot_updated(self, sh, pivot, instance):
+        """Capture observable COM pivot state, not a purported creation command."""
+        path = self.path_of(sh.Parent)
+        if not self.scope(path):
+            return
+        sheet = str(sh.Name)
+        self.emit('excel_pivot_updated', path, sheet=sheet, instance=instance,
+                  individual_cell_results_not_implied=True,
+                  pivot_definition_observation_attempted=True)
+        try:
+            name = str(pivot.Name)[:160]
+            source = None
+            source_error = None
+            try:
+                source = str(pivot.SourceData)[:512]
+            except Exception as exc:
+                source_error = type(exc).__name__
+            def axis_fields(axis):
+                result = []
+                for field in pivot.PivotFields():
+                    if len(result) >= 200:
+                        break
+                    try:
+                        if int(field.Orientation) == axis:
+                            result.append(str(field.Name)[:160])
+                    except Exception:
+                        continue
+                return result
+            values = []
+            for field in pivot.DataFields:
+                if len(values) >= 100:
+                    break
+                try:
+                    values.append(dict(name=str(field.Name)[:160],
+                                       source_name=str(field.SourceName)[:160],
+                                       function_code=int(field.Function)))
+                except Exception:
+                    continue
+            self.emit('excel_pivot_definition_observed', path, sheet=sheet,
+                      pivot_name=name, source_data=source,
+                      source_read_error=source_error,
+                      row_fields=axis_fields(1), column_fields=axis_fields(2),
+                      page_fields=axis_fields(3), data_fields=values,
+                      source='excel_desktop_event', completeness='partial_com_observation',
+                      observation='pivot_updated_not_creation_proof')
+        except Exception as exc:
+            self.emit('excel_pivot_definition_unavailable', path, sheet=sheet,
+                      reason=type(exc).__name__,
+                      pivot_update_observed=True)
+
     def handlers(self, instance):
         collector = self
         class Events:
@@ -335,7 +385,7 @@ class ExcelListener:
             def OnSheetCalculate(self, Sh):
                 self.safe(collector.sheet_event, 'excel_sheet_calculated', Sh, instance, throttle=True)
             def OnSheetPivotTableUpdate(self, Sh, Target):
-                self.safe(collector.sheet_event, 'excel_pivot_updated', Sh, instance, throttle=True)
+                self.safe(collector.pivot_updated, Sh, Target, instance)
         return Events
 
     def discover(self):
