@@ -1,0 +1,24 @@
+change_id: CHG-46
+readiness: pilot_only_windows_acceptance_pending
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - recorder/excel.py
+  - recorder/handover.py
+  - recorder/app.py
+  - recorder/folders.py
+  - web/index.html
+  - tests/test_recorder.py
+regression_obligations:
+  - id: R1
+    reason: Growing Excel UsedRange must not erase known-empty prior cells
+    test_id: core
+  - id: R2
+    reason: Export must contain only selected-range snapshots and include integrity hashes and gaps
+    test_id: core
+  - id: R3
+    reason: Pauses and downtime classifications must be preserved after restart
+    test_id: core
+  - id: R4
+    reason: Snapshot and notification reduction must not invent or silently discard observed activity
+    test_id: core
