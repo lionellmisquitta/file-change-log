@@ -1,0 +1,17 @@
+change_id: CHG-49
+route: Standard Change
+prohibited_paths:
+  - recorder/
+  - web/
+  - .github/
+checkpoints:
+  - id: public-dataset-independent-qa
+    allowed_paths:
+      - tests/test_public_dataset_stress.py
+      - .delivery/CHG-49/
+    test_paths:
+      - tests/
+    tests:
+      - id: public-data
+        command: [python, -m, unittest, discover, -s, tests, -p, test_public_dataset_stress.py, -v]
+        timeout_seconds: 120
