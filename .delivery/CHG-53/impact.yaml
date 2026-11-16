@@ -1,0 +1,21 @@
+change_id: CHG-53
+readiness: review
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - tests/test_real_public_pivot_dataset.py
+  - tests/REAL_PIVOT_PUBLIC_DATA_QA.md
+  - quality-evidence/CHG-53/
+regression_obligations:
+  - id: R1
+    reason: True public Excel-authored pivot definitions must all be discovered without relying on synthetic OOXML alone
+    test_id: full-regression
+  - id: R2
+    reason: Pivot state differences must not falsely assert a user-created pivot
+    test_id: full-regression
+  - id: R3
+    reason: Retail formula fills, manual exceptions, filters and counts must reconcile
+    test_id: full-regression
+  - id: R4
+    reason: Retained saved-byte evidence and ZIP hashes must be valid
+    test_id: full-regression
