@@ -271,6 +271,11 @@ def make_handler(recorder, token, shutdown):
                     self.respond(200, recorder.status())
                 elif url.path == '/api/events':
                     self.respond(200, recorder.store.recent(search=parse_qs(url.query).get('q', [''])[0]))
+                elif url.path == '/api/timeline':
+                    from .timeline import timeline
+                    opts = parse_qs(url.query)
+                    path_filter = opts.get('path', [''])[0][:300]
+                    self.respond(200, timeline(recorder.store, limit=200, path_filter=path_filter))
                 elif url.path == '/api/handover':
                     opts = parse_qs(url.query)
                     include = opts.get('snapshots', ['0'])[0] == '1'
