@@ -1,0 +1,20 @@
+change_id: CHG-53
+route: Standard Change
+prohibited_paths:
+  - recorder/
+  - web/
+  - .github/
+  - requirements.txt
+checkpoints:
+  - id: independent-real-pivot-test
+    allowed_paths:
+      - tests/test_real_public_pivot_dataset.py
+      - tests/REAL_PIVOT_PUBLIC_DATA_QA.md
+      - quality-evidence/CHG-53/
+      - .delivery/CHG-53/
+    test_paths:
+      - tests/
+    tests:
+      - id: full-regression
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 240
