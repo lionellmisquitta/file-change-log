@@ -86,7 +86,7 @@ class Recorder:
             self.store.emit('monitoring_gap', last_observed_at=previous.get('timestamp_utc'),
                             resumed_at=now(), cause='previous_recorder_session_ended',
                             intermediate_events_not_recoverable=True)
-        self.store.emit('recorder_started', version='0.2.1-beta', platform=sys.platform,
+        self.store.emit('recorder_started', version='0.2.3-beta', platform=sys.platform,
                         recorded_account=os.environ.get('USERNAME', os.environ.get('USER', 'unknown')),
                         capture_scope='selected_folders_only', missing_intermediate_history_not_recoverable=True)
         self.reconfigure_workers()
@@ -143,6 +143,7 @@ class Recorder:
     def status(self):
         return dict(started=self.started, paused=self.paused, settings=self.config, history=str(self.store.directory),
                     storage_error=self.store.error,
+                    snapshot_gaps=self.store.snapshot_gap_counts(),
                     snapshot_bytes=self.store.snapshot_bytes,
                     snapshot_budget_bytes=int(self.config.get('snapshot_budget_mb', 500))*1024*1024,
                     folders=[dict(w.health) for w in self.workers],
