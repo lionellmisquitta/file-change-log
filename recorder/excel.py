@@ -1,8 +1,40 @@
 """Windows desktop COM event collector; no Excel automation from a service."""
 import os
+import re
 import threading
 import time
 from .common import cell_address, canonical, clean, inside, now
+
+def range_bounds(address):
+    """Return (min_col, min_row, max_col, max_row) for an A1 rectangle."""
+    parts = re.findall(r'\\$?([A-Z]+)\\$?(\\d+)', str(address).upper())
+    if not parts:
+        return None
+    points = []
+    for letters, row in parts:
+        col = 0
+        for character in letters:
+            col = col * 26 + ord(character) - 64
+        points.append((col, int(row)))
+    return (min(p[0] for p in points), min(p[1] for p in points),
+            max(p[0] for p in points), max(p[1] for p in points))
+
+
+def is_growth_outside_old_range(old_range, new_range, changed_addresses):
+    """Only preserve known-empty history when changes are entirely outside old extent."""
+    old = range_bounds(old_range)
+    new = range_bounds(new_range)
+    if not old or not new or not changed_addresses:
+        return False
+    # Growing the rectangle must contain all of its previous cells.
+    if new[0] > old[0] or new[1] > old[1] or new[2] < old[2] or new[3] < old[3]:
+        return False
+    for address in changed_addresses:
+        cell = range_bounds(address)
+        if not cell or (old[0] <= cell[0] <= old[2] and old[1] <= cell[1] <= old[3]):
+            return False
+    return True
+
 
 class CellCache:
     """Bounded, conservative last-observed cell state; not an Excel undo log."""
@@ -68,6 +100,7 @@ class ExcelListener:
         self.throttles = {}
         self.warned_paths = set()
         self.used_ranges = {}
+        self.reseed_needed = set()
         self.thread = threading.Thread(target=self.run, daemon=True, name='Excel events')
 
     def scope(self, path):
@@ -149,8 +182,10 @@ class ExcelListener:
             else:
                 self.cache.seed(key, baseline)
                 self.used_ranges[key] = str(sh.UsedRange.Address)
+                self.reseed_needed.discard(key)
         except Exception as e:
             self.cache.invalidate(key)
+            self.reseed_needed.add(key)
             self.emit('excel_baseline_incomplete', path, sheet=str(sh.Name), reason=str(e), old_values_may_be_unknown=True)
 
     def changed(self, sh, target, instance):
@@ -163,24 +198,36 @@ class ExcelListener:
             cells = self.cells(target, maximum)
         except Exception as e:
             self.cache.invalidate(key)
+            self.reseed_needed.add(key)
             self.emit('excel_range_changed', path, sheet=str(sh.Name), range=str(target.Address),
                       details_captured=False, reason=str(e), old_baseline_invalidated=True,
                       save_state='not_confirmed_saved', action_type='unknown')
             return
-        # Structural edits can shift values without individual cell events.
-        # The prior address cache is not trustworthy after such changes.
+        # A user typing in a new cell expands UsedRange. That is not by
+        # itself structural editing: empty cells outside a complete seed are
+        # known empty and should be correctly reported as additions.
         try:
-            range_changed = key in self.used_ranges and str(sh.UsedRange.Address) != self.used_ranges[key]
+            current_range = str(sh.UsedRange.Address)
+            previous_range = self.used_ranges.get(key)
+            range_changed = previous_range is not None and current_range != previous_range
+            growth = (range_changed and
+                      is_growth_outside_old_range(previous_range, current_range, cells))
+            # A full-row/column edit is potentially structural; do not infer old values.
             entire_axis = bool(target.EntireRow.CountLarge == sh.Cells.CountLarge or
                                target.EntireColumn.CountLarge == sh.Cells.CountLarge)
         except Exception:
+            current_range = None
             range_changed = False
+            growth = False
             entire_axis = False
-        if range_changed or entire_axis:
+        if (range_changed and not growth) or entire_axis:
             self.cache.invalidate(key)
+            self.reseed_needed.add(key)
             self.used_ranges.pop(key, None)
             self.emit('excel_old_values_invalidated', path, sheet=str(sh.Name),
                       reason='worksheet_extent_or_structure_changed')
+        elif current_range is not None:
+            self.used_ranges[key] = current_range
         changes = self.cache.change(key, cells)
         self.emit('excel_range_changed', path, sheet=str(sh.Name), range=str(target.Address), changes=changes,
                   details_captured=True, save_state='not_confirmed_saved', instance=instance,
@@ -237,6 +284,7 @@ class ExcelListener:
                     if key[0] == instance and key[1] == path:
                         collector.cache.invalidate(key)
                         collector.used_ranges.pop(key, None)
+                        collector.reseed_needed.discard(key)
                 collector.known_books.discard((instance, path))
             def OnSheetChange(self, Sh, Target):
                 self.safe(collector.changed, Sh, Target, instance)
@@ -319,6 +367,10 @@ class ExcelListener:
                             self.connections[hwnd] = (app, sink)
                         for wb in app.Workbooks:
                             self.prime(wb, str(hwnd))
+                            for sh in wb.Worksheets:
+                                key = (str(hwnd), *self.sheet_key(sh))
+                                if key in self.reseed_needed:
+                                    self.seed_sheet(sh, str(hwnd))
                         if not bool(app.EnableEvents):
                             self.health['detail'] = 'Excel has disabled events; edits may be missed.'
                             if self.throttles.get(('disabled', hwnd), 0) + 30 < time.monotonic():
