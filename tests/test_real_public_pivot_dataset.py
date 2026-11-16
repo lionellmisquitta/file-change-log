@@ -162,6 +162,70 @@ class RealPublicPivotStress(unittest.TestCase):
             self.assertIn("columns", pivot)
             self.assertIn("values", pivot)
 
+    def test_actual_pivot_field_axes_match_independent_raw_xml(self):
+        with zipfile.ZipFile(self.pivots) as archive:
+            raw_parts = raw_pivot_xml(archive)
+            independent = []
+            for part in raw_parts:
+                root = ET.fromstring(archive.read(part))
+                def count_children(name):
+                    node = root.find(SS+name)
+                    return len(list(node)) if node is not None else 0
+                independent.append({
+                    "name":root.get("name"),
+                    "row_count":count_children("rowFields"),
+                    "column_count":count_children("colFields"),
+                    "page_count":count_children("pageFields"),
+                    "values_count":count_children("dataFields"),
+                })
+        extracted = extract_workbook_logic(self.pivots)["pivots"]
+        from collections import Counter as Counts
+        native_counts = Counts((d["name"],d["row_count"],d["column_count"],
+                                d["page_count"],d["values_count"]) for d in independent)
+        parsed_counts = Counts((d["name"],len(d["rows"]),len(d["columns"]),
+                                len(d["page_filters"]),len(d["values"])) for d in extracted)
+        print("REAL_PIVOT_AXIS_ORACLE " + json.dumps({
+            "native":independent,
+            "parsed":[{"name":d["name"], "source":d["source"],
+                       "row_count":len(d["rows"]), "column_count":len(d["columns"]),
+                       "page_count":len(d["page_filters"]), "value_count":len(d["values"]),
+                       "rows":d["rows"],"columns":d["columns"],"values":d["values"],
+                       "warnings":d["warnings"]} for d in extracted]
+        },sort_keys=True),flush=True)
+        self.assertEqual(parsed_counts,native_counts,
+                         "Some genuine pivot axis or data-field definitions were lost")
+
+    def test_actual_pivot_same_file_version_delta_and_retained_baselines(self):
+        self.scan()
+        with zipfile.ZipFile(self.pivots) as archive:
+            pivot_part=raw_pivot_xml(archive)[0]
+        original=self.pivots.read_bytes()
+        patched=self.root/"edited-pivot.xlsx"
+        patch_pivot_state(self.pivots,patched,pivot_part)
+        self.pivots.write_bytes(patched.read_bytes())
+        edited=self.pivots.read_bytes()
+        self.assertNotEqual(original,edited)
+        self.scan()
+        events=self.store.recent(300)
+        path_events=[e for e in events if e.get("path","").lower().endswith("real_public_pivots.xlsx")]
+        versions=[e for e in path_events if e["event"]=="file_version_captured"]
+        self.assertEqual(len(versions),2)
+        delta=next(e for e in path_events
+                   if e["event"]=="workbook_logic_pivot_state_changes")
+        self.assertEqual(delta["pivot_changes"][0]["observation"],"definition_changed")
+        self.assertEqual(len(delta["pivot_changes"]),1)
+        first=self.store.directory/versions[0]["snapshot"]
+        second=self.store.directory/versions[1]["snapshot"]
+        self.assertEqual(first.read_bytes(),original)
+        self.assertEqual(second.read_bytes(),edited)
+        self.assertEqual(len(extract_workbook_logic(first)["pivots"]),5)
+        self.assertEqual(len(extract_workbook_logic(second)["pivots"]),5)
+        print("REAL_PIVOT_SAME_PATH_REVISION "+json.dumps({
+            "versions":len(versions),"original_hash":hashlib.sha256(original).hexdigest(),
+            "revised_hash":hashlib.sha256(edited).hexdigest(),
+            "definition_changes":len(delta["pivot_changes"]),
+            "both_snapshots_retained":True}, sort_keys=True),flush=True)
+
     def test_pivot_metadata_change_detected_without_invented_creation(self):
         with zipfile.ZipFile(self.pivots) as z:
             parts = raw_pivot_xml(z)
