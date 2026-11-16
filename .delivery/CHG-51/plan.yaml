@@ -1,0 +1,21 @@
+change_id: CHG-51
+route: Standard Change
+prohibited_paths:
+  - .github/
+  - requirements.txt
+  - setup/
+checkpoints:
+  - id: formula-evidence-compaction
+    allowed_paths:
+      - recorder/formula_patterns.py
+      - recorder/compare.py
+      - recorder/folders.py
+      - tests/test_formula_patterns.py
+      - docs/FORMULA-PATTERN-EVIDENCE.md
+      - .delivery/CHG-51/
+    test_paths:
+      - tests/
+    tests:
+      - id: full-regression
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 240
