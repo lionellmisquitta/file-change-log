@@ -1,0 +1,26 @@
+change_id: CHG-48
+readiness: pilot_only_windows_acceptance_pending
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - recorder/compare.py
+  - recorder/folders.py
+  - recorder/excel.py
+  - recorder/store.py
+  - recorder/app.py
+  - recorder/handover.py
+  - web/index.html
+  - tests/test_recorder.py
+regression_obligations:
+  - id: R1
+    reason: All sheets and columns must remain counted when comparison details are truncated
+    test_id: core
+  - id: R2
+    reason: Workbook feature metadata and unchanged-cell byte changes must not be lost
+    test_id: core
+  - id: R3
+    reason: Snapshot skip evidence must surface in dashboard and selected export range
+    test_id: core
+  - id: R4
+    reason: Formula overwrite and destructive Excel changes need explanation markers
+    test_id: core
