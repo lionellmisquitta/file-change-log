@@ -1,0 +1,22 @@
+change_id: CHG-54
+readiness: review
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - tests/uno_pivot_operations.py
+  - tests/test_pivot_operations_end_to_end.py
+  - .github/workflows/real-pivot-operations.yml
+  - docs/PIVOT-OPERATIONS-AUTOMATED-QA.md
+regression_obligations:
+  - id: R1
+    reason: Generate real pivot configurations using a spreadsheet engine rather than hand-edit OOXML
+    test_id: pivot-real-engine
+  - id: R2
+    reason: Saved workbook creation, changed aggregation, field placement, page filter and removal must be recorded with accurate non-causal state labels
+    test_id: pivot-real-engine
+  - id: R3
+    reason: Initial data plus all five output versions and exported evidence ZIP must retain exact source bytes and checksums
+    test_id: pivot-real-engine
+  - id: R4
+    reason: Existing recorder regression must not be weakened by new integration tooling
+    test_id: full-regression
