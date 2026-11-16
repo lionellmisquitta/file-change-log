@@ -41,7 +41,7 @@ def main(input_file, output_dir, port):
     emitted = []
     try:
         source = document.Sheets.getByName("SourceData")
-        last_row = source.getCellRangeByName("A1").getDataArray()[0] # Header verification.
+        last_row = source.getCellRangeByName("A1:D1").getDataArray()[0] # Header verification.
         assert last_row[:4] == ("Region", "Product", "Month", "Revenue"), last_row
         document.Sheets.insertNewByName("PivotTest", document.Sheets.Count)
         sheet = document.Sheets.getByName("PivotTest")
