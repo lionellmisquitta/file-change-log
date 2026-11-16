@@ -5,27 +5,49 @@ import time
 from .common import cell_address, canonical, clean, inside, now
 
 class CellCache:
+    """Bounded, conservative last-observed cell state; not an Excel undo log."""
     def __init__(self):
         self.sheets = {}
+        self.complete = set()
 
-    def seed(self, key, cells):
-        self.sheets[key] = dict(cells)
+    def seed(self, key, cells, complete=True):
+        # Sparse cache: a fully scanned sheet has known-empty cells elsewhere.
+        self.sheets[key] = {k: v for k, v in cells.items()
+                            if v.get('value') is not None or v.get('formula') is not None}
+        if complete:
+            self.complete.add(key)
+        else:
+            self.complete.discard(key)
 
     def invalidate(self, key):
         self.sheets.pop(key, None)
+        self.complete.discard(key)
 
     def change(self, key, cells):
         cache = self.sheets.get(key)
         changes = []
+        empty = {'value': None, 'formula': None}
         for address, state in cells.items():
-            known = cache is not None and address in cache
-            prior = cache.get(address) if known else None
-            changes.append(dict(address=address, operation=('added' if known and prior.get('value') is None and prior.get('formula') is None and (state.get('value') is not None or state.get('formula') is not None) else 'cleared' if known and (prior.get('value') is not None or prior.get('formula') is not None) and state.get('value') is None and state.get('formula') is None else 'updated' if known else 'observed_unknown_prior'), old_value=prior.get('value') if prior else None,
-                                old_formula=prior.get('formula') if prior else None, old_value_known=known,
+            known = cache is not None and (address in cache or key in self.complete)
+            prior = cache.get(address, empty) if known else empty
+            was_empty = prior.get('value') is None and prior.get('formula') is None
+            is_empty = state.get('value') is None and state.get('formula') is None
+            operation = ('observed_unknown_prior' if not known else
+                         'added' if was_empty and not is_empty else
+                         'cleared' if not was_empty and is_empty else 'updated')
+            changes.append(dict(address=address, operation=operation,
+                                old_value=prior.get('value') if known else None,
+                                old_formula=prior.get('formula') if known else None,
+                                old_value_known=known,
+                                old_value_source='last_observed_at_address' if known else 'unknown',
                                 new_value=state.get('value'), new_formula=state.get('formula')))
         if cache is None:
             cache = self.sheets.setdefault(key, {})
-        cache.update(cells)
+        for address, state in cells.items():
+            if state.get('value') is None and state.get('formula') is None:
+                cache.pop(address, None)
+            else:
+                cache[address] = state
         return changes
 
 def matrix(value, rows, cols):
@@ -44,6 +66,8 @@ class ExcelListener:
         self.known_books = set()
         self.sheet_names = {}
         self.throttles = {}
+        self.warned_paths = set()
+        self.used_ranges = {}
         self.thread = threading.Thread(target=self.run, daemon=True, name='Excel events')
 
     def scope(self, path):
@@ -81,6 +105,13 @@ class ExcelListener:
     def prime(self, workbook, instance):
         path = self.path_of(workbook)
         if not self.scope(path):
+            if path and path not in self.warned_paths:
+                self.warned_paths.add(path)
+                # Do not ingest workbook content outside the user's roots.
+                self.store.emit('excel_workbook_out_of_scope', path,
+                                reason='Excel workbook path does not match selected local folders',
+                                path_is_web_url=path.lower().startswith(('https://', 'http://')),
+                                live_edits_not_captured=True)
             return
         book_key = (instance, canonical(path))
         if book_key in self.known_books:
@@ -108,7 +139,15 @@ class ExcelListener:
             baseline = self.cells(sh.UsedRange, int(self.settings.get('excel_cache_cells', 200000)))
             # A newly empty cell may lie outside UsedRange; a later change to it
             # must be classified as an addition rather than lost as unknown.
-            self.cache.seed(key, baseline)
+            budget = int(self.settings.get('excel_cache_cells', 200000))
+            used = sum(len(v) for v in self.cache.sheets.values())
+            if used + len(baseline) > budget:
+                self.cache.invalidate(key)
+                self.emit('excel_baseline_incomplete', path, sheet=str(sh.Name),
+                          reason='Total cache budget reached', old_values_may_be_unknown=True)
+            else:
+                self.cache.seed(key, baseline)
+                self.used_ranges[key] = str(sh.UsedRange.Address)
         except Exception as e:
             self.cache.invalidate(key)
             self.emit('excel_baseline_incomplete', path, sheet=str(sh.Name), reason=str(e), old_values_may_be_unknown=True)
@@ -127,6 +166,20 @@ class ExcelListener:
                       details_captured=False, reason=str(e), old_baseline_invalidated=True,
                       save_state='not_confirmed_saved', action_type='unknown')
             return
+        # Structural edits can shift values without individual cell events.
+        # The prior address cache is not trustworthy after such changes.
+        try:
+            range_changed = key in self.used_ranges and str(sh.UsedRange.Address) != self.used_ranges[key]
+            entire_axis = bool(target.EntireRow.CountLarge == sh.Cells.CountLarge or
+                               target.EntireColumn.CountLarge == sh.Cells.CountLarge)
+        except Exception:
+            range_changed = False
+            entire_axis = False
+        if range_changed or entire_axis:
+            self.cache.invalidate(key)
+            self.used_ranges.pop(key, None)
+            self.emit('excel_old_values_invalidated', path, sheet=str(sh.Name),
+                      reason='worksheet_extent_or_structure_changed')
         changes = self.cache.change(key, cells)
         self.emit('excel_range_changed', path, sheet=str(sh.Name), range=str(target.Address), changes=changes,
                   details_captured=True, save_state='not_confirmed_saved', instance=instance,
@@ -177,6 +230,13 @@ class ExcelListener:
                 self.safe(collector.simple, 'excel_save_result', Wb, instance, success=bool(Success))
             def OnWorkbookBeforeClose(self, Wb, Cancel):
                 self.safe(collector.simple, 'excel_close_requested', Wb, instance, completed_not_implied=True)
+                # Release associated in-memory caches; no deleted-content inference.
+                path = canonical(collector.path_of(Wb))
+                for key in list(collector.cache.sheets):
+                    if key[0] == instance and key[1] == path:
+                        collector.cache.invalidate(key)
+                        collector.used_ranges.pop(key, None)
+                collector.known_books.discard((instance, path))
             def OnSheetChange(self, Sh, Target):
                 self.safe(collector.changed, Sh, Target, instance)
             def OnWorkbookNewSheet(self, Wb, Sh):
