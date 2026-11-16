@@ -2,6 +2,11 @@
 
 **See what changed. Preserve the evidence. Understand the process.**
 
+![File Change Log animated walkthrough](media/file-change-log-demo.gif)
+
+**[Watch the complete LinkedIn walkthrough (MP4)](media/file-change-log-linkedin.mp4)** · A compact, repository-friendly copy of the supplied video.
+
+
 File Change Log is a local-first Windows application that observes changes in selected folders and Excel workbooks, retains saved file versions, and lets people add explanations to the resulting activity history.
 
 It is designed for workflows where understanding *how* a spreadsheet or collection of files evolved matters: financial and royalty operations, recurring reporting, reconciliation, data preparation, and process discovery.
