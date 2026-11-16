@@ -16,6 +16,8 @@ checkpoints:
       - web/index.html
       - tests/test_recorder.py
       - tests/test_public_dataset_stress.py
+      - tests/PUBLIC_DATASET_STRESS_TESTING.md
+      - quality-evidence/CHG-48/public-dataset-results.json
       - .delivery/CHG-48/
     test_paths:
       - tests/
