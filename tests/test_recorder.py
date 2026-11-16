@@ -156,6 +156,16 @@ class CacheTests(unittest.TestCase):
     def test_unknown_old_is_not_invented(self):
         c=CellCache();e=c.change('sheet',{'A1':{'value':10,'formula':None}})[0]
         self.assertFalse(e['old_value_known']);self.assertIsNone(e['old_value'])
+    def test_newly_filled_and_cleared_existing_cells(self):
+        c = CellCache()
+        c.seed('sheet', {'A1': {'value': None, 'formula': None}, 'A2': {'value': 123, 'formula': None}})
+        filled = c.change('sheet', {'A1': {'value': 99999, 'formula': None}})[0]
+        cleared = c.change('sheet', {'A2': {'value': None, 'formula': None}})[0]
+        self.assertEqual(filled['operation'], 'added')
+        self.assertTrue(filled['old_value_known'])
+        self.assertEqual(cleared['operation'], 'cleared')
+        self.assertEqual(cleared['old_value'], 123)
+
     def test_old_and_new_formulas_are_distinct(self):
         c=CellCache();c.seed('sheet',{'A1':{'value':2,'formula':'=1+1'}})
         e=c.change('sheet',{'A1':{'value':3,'formula':'=1+2'}})[0]
