@@ -160,5 +160,55 @@ class TimelineTests(unittest.TestCase):
                 store.close()
 
 
+class LivePivotMetadataTests(unittest.TestCase):
+    def test_com_pivot_update_records_state_and_not_creation(self):
+        from types import SimpleNamespace as N
+        from recorder.excel import ExcelListener
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            store = Store(root / "history")
+            try:
+                workbook = N(Path=str(root), FullName=str(root/"finance.xlsx"))
+                sheet = N(Parent=workbook, Name="Pivot", CodeName="Sheet1")
+                def fields():
+                    return [N(Orientation=1, Name="Region"),
+                            N(Orientation=2, Name="Month"),
+                            N(Orientation=3, Name="Currency"),
+                            N(Orientation=4, Name="Revenue")]
+                pivot = N(Name="Sales", SourceData="Data!A1:C100",
+                          PivotFields=fields,
+                          DataFields=[N(Name="Total Revenue", SourceName="Revenue", Function=-4157)])
+                listener = ExcelListener(store, {}, lambda: [str(root)])
+                listener.handlers("excel1")().OnSheetPivotTableUpdate(sheet, pivot)
+                events = store.recent(30)
+                p = next(x for x in events if x["event"] == "excel_pivot_definition_observed")
+                self.assertEqual(p["row_fields"], ["Region"])
+                self.assertEqual(p["column_fields"], ["Month"])
+                self.assertEqual(p["page_fields"], ["Currency"])
+                self.assertEqual(p["data_fields"][0]["function_code"], -4157)
+                self.assertEqual(p["observation"], "pivot_updated_not_creation_proof")
+                self.assertEqual(p["completeness"], "partial_com_observation")
+            finally:
+                store.close()
+
+    def test_com_failure_does_not_fabricate_definition(self):
+        from types import SimpleNamespace as N
+        from recorder.excel import ExcelListener
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            store = Store(root / "history")
+            try:
+                workbook = N(Path=str(root), FullName=str(root/"finance.xlsx"))
+                sheet = N(Parent=workbook, Name="Pivot", CodeName="Sheet1")
+                listener = ExcelListener(store, {}, lambda: [str(root)])
+                listener.handlers("excel1")().OnSheetPivotTableUpdate(sheet, object())
+                kinds = [e["event"] for e in store.recent(10)]
+                self.assertIn("excel_pivot_updated", kinds)
+                self.assertIn("excel_pivot_definition_unavailable", kinds)
+                self.assertNotIn("excel_pivot_definition_observed", kinds)
+            finally:
+                store.close()
+
+
 if __name__ == "__main__":
     unittest.main()
