@@ -5,21 +5,26 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from .common import SNAPSHOT_EXTENSIONS, canonical, ignored, now
+from .common import SNAPSHOT_EXTENSIONS, canonical, ignored, inside as inside_path, now
 from .compare import compare_files, workbook_cells
 
 def signature(path):
     s = os.stat(path)
     return [s.st_size, s.st_mtime_ns, s.st_ino, s.st_dev]
 
+class ScanInventory(dict):
+    def __init__(self, values, unreadable=()):
+        super().__init__(values)
+        self.unreadable = tuple(unreadable)
+
 def walk_files(root, data_dir):
     """Incomplete enumeration is an outage, never evidence of mass deletion."""
     if not os.path.isdir(root):
         raise OSError('Folder unavailable or not a directory')
-    errors = []
+    unreadable = []
     found = {}
     def error(e):
-        errors.append(e)
+        unreadable.append(getattr(e, 'filename', None) or root)
     for folder, dirs, files in os.walk(root, followlinks=False, onerror=error):
         dirs[:] = [d for d in dirs if not ignored(Path(folder)/d, data_dir)
                    and not os.path.islink(Path(folder)/d)
@@ -30,11 +35,11 @@ def walk_files(root, data_dir):
                 continue
             try:
                 found[path] = signature(path)
-            except OSError as e:
-                errors.append(e)
-    if errors:
-        raise OSError(f'Incomplete scan: {errors[0]}')
-    return found
+            except FileNotFoundError:
+                continue  # Files can vanish between directory walk and stat.
+            except (PermissionError, OSError):
+                unreadable.append(path)
+    return ScanInventory(found, unreadable)
 
 class FolderWorker:
     def __init__(self, root, store, settings, enabled=lambda: True):
@@ -44,6 +49,8 @@ class FolderWorker:
         self.enabled = enabled
         self.stop = threading.Event()
         self.pending = {}
+        self.failures = {}
+        self.baseline_paths = None
         self.health = dict(path=self.root, state='starting', last_scan=None, error=None)
         self.offline = None
         self.thread = threading.Thread(target=self.run, daemon=True, name='Folder scan')
@@ -149,7 +156,16 @@ class FolderWorker:
             self.store.emit('folder_reconnected', self.root, intermediate_activity_unknown=True)
         self.offline = False
         old = self.store.inventory(self.root)
+        if self.baseline_paths is None:
+            self.baseline_paths = set(current) if not old else set()
+        blocked = getattr(current, 'unreadable', ())
+        if blocked:
+            self.health['unreadable_paths'] = len(blocked)
+        else:
+            self.health.pop('unreadable_paths', None)
         for path in set(old) - set(current):
+            if any(inside_path(path, subtree) for subtree in blocked):
+                continue  # An unreadable subtree is not evidence of deletion.
             if not self.enabled():
                 return
             self.store.emit('file_absent_on_scan', path, root=self.root, last_snapshot=old[path][1],
@@ -170,13 +186,16 @@ class FolderWorker:
             if time.monotonic() - pending[1] < float(self.settings.get('settle_seconds', 2)):
                 continue
             try:
-                snapshot = self.capture(path, sig, initial=(previous is None))
+                snapshot = self.capture(path, sig, initial=(previous is None and path in self.baseline_paths))
                 event = self.store.emit('file_version_captured', path, root=self.root,
-                    capture='saved_file_bytes', classification='changed' if previous else ('baseline' if not old else 'arrived'),
+                    capture='saved_file_bytes', classification='changed' if previous else ('baseline' if path in self.baseline_paths else 'arrived'),
                     size=sig[0], modified_time_ns=sig[1], snapshot=snapshot,
                     previous_snapshot=previous[1] if previous else None)
                 self.store.put_file(self.root, path, sig, snapshot or (previous[1] if previous else None))
                 self.pending.pop(path, None)
+                if path in self.failures:
+                    self.store.emit('snapshot_recovered', path, attempts=self.failures[path]['attempts'])
+                    del self.failures[path]
                 if snapshot and not previous and Path(path).suffix.lower() in {'.xlsx', '.xlsm'}:
                     # A first snapshot is an observation, not proof of when each
                     # cell was entered. Show populated cells without inventing edits.
@@ -206,8 +225,18 @@ class FolderWorker:
             except Exception as e:
                 # Back off transient locks without losing the old baseline.
                 self.pending[path] = (sig, time.monotonic())
-                self.store.emit('snapshot_retry', path, reason=str(e))
-        self.health.update(state='watching', last_scan=now(), error=None, files=len(current), pending=len(self.pending))
+                failure = self.failures.get(path)
+                current_time = time.monotonic()
+                if failure is None:
+                    failure = {'first': current_time, 'last_notice': 0, 'attempts': 0}
+                    self.failures[path] = failure
+                failure['attempts'] += 1
+                if failure['attempts'] == 1 or current_time - failure['last_notice'] > 300:
+                    self.store.emit('snapshot_delayed' if current_time - failure['first'] > 120 else 'snapshot_retry',
+                                    path, reason=str(e), attempts=failure['attempts'])
+                    failure['last_notice'] = current_time
+
+        self.health.update(state='watching', last_scan=now(), error=None, files=len(current), pending=len(self.pending), delayed=len(self.failures))
 
     def run(self):
         self.native_listener()
@@ -221,7 +250,7 @@ class FolderWorker:
                 except Exception:
                     pass
             if self.observer and not self.observer.is_alive():
-                self.health.update(error='Native notifications stopped; periodic scans continue.')
+                self.health['notifications'] = 'stopped; periodic scans remain active'
             self.stop.wait(float(self.settings.get('scan_seconds', 5)))
         if self.observer:
             self.observer.stop()
