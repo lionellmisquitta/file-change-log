@@ -1,0 +1,71 @@
+name: Real Pivot Operations Integration (LibreOffice UNO)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-pivot-operations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install required real spreadsheet engine
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libreoffice-calc python3-uno
+          /usr/bin/python3 -c 'import uno; print("LO UNO installed")'
+          libreoffice --version
+      - name: Install recorder test dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Test genuine pivot operations through saved-file recorder
+        env:
+          RUN_REAL_PIVOT_OPERATIONS: '1'
+        run: python -m unittest discover -s tests -p test_pivot_operations_end_to_end.py -v
+      - name: Run full recorder regression
+        run: python -m unittest discover -s tests -v
+
+  excel-com-capability:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe actual desktop Excel COM availability (not a mocked callback)
+        shell: pwsh
+        run: |
+          $excel = $null
+          $status = 'BLOCKED_NO_EXCEL_COM'
+          $version = $null
+          try {
+            $excel = New-Object -ComObject Excel.Application -ErrorAction Stop
+            $version = [string]$excel.Version
+            $status = 'EXCEL_COM_AVAILABLE_NEEDS_E2E'
+          } catch {
+            Write-Output ("Excel COM unavailable: " + $_.Exception.GetType().Name)
+          } finally {
+            if ($null -ne $excel) {
+              $excel.Quit()
+              [System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($excel) | Out-Null
+            }
+          }
+          $report = @{ status = $status; excel_version = $version;
+            note = 'No simulated event is accepted as genuine Microsoft Excel automation evidence.' }
+          $report | ConvertTo-Json | Set-Content -Path excel-com-capability.json -Encoding utf8
+          Get-Content excel-com-capability.json
+          "Excel COM: $status" >> $env:GITHUB_STEP_SUMMARY
+          if ($status -ne 'EXCEL_COM_AVAILABLE_NEEDS_E2E') {
+            "Microsoft Excel PivotTableUpdate E2E remains BLOCKED on this hosted runner." >> $env:GITHUB_STEP_SUMMARY
+          }
+      - name: Upload runner capability evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: excel-com-capability
+          path: excel-com-capability.json
+          retention-days: 14
