@@ -17,9 +17,12 @@ from .common import atomic_json, canonical, inside, now
 from .store import Store
 from .folders import FolderWorker
 from .excel import ExcelListener
+from .notes_window import NotesWindow
+from .handover import build_handover
 
 DEFAULTS = dict(roots=[], scan_seconds=5, settle_seconds=2, snapshot_limit_mb=50,
                 snapshot_budget_mb=500, baseline_budget_mb=250,
+                explanation_mode='silent', floating_notes=False,
                 comparison_cells=200000, excel_cache_cells=200000, excel_event_cells=10000)
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
@@ -53,6 +56,11 @@ def validate_config(data, output):
         if not low <= value <= high:
             raise ValueError(f'{key} must be between {low} and {high}.')
         config[key] = value
+    mode = data.get('explanation_mode', 'silent')
+    if mode not in {'silent', 'explanation'}:
+        raise ValueError('Unknown explanation mode')
+    config['explanation_mode'] = mode
+    config['floating_notes'] = bool(data.get('floating_notes', False))
     if config['baseline_budget_mb'] > config['snapshot_budget_mb']:
         raise ValueError('Baseline allowance cannot exceed snapshot budget.')
     return config
@@ -67,6 +75,7 @@ class Recorder:
         self.excel = None
         self.started = now()
         self.lock = threading.RLock()
+        self.notes_window = NotesWindow(self.store, on_close=self.hide_floating_notes)
 
     def start(self):
         self.store.emit('recorder_started', version='0.1.0', platform=sys.platform,
@@ -75,6 +84,7 @@ class Recorder:
         self.reconfigure_workers()
         self.excel = ExcelListener(self.store, self.config, lambda: self.config['roots'], lambda: not self.paused)
         self.excel.thread.start()
+        self.sync_notes_window()
 
     def reconfigure_workers(self):
         for w in self.workers:
@@ -95,6 +105,29 @@ class Recorder:
                 self.excel.settings = new
                 self.excel.reset.set()
             self.reconfigure_workers()
+            self.sync_notes_window()
+
+    def sync_notes_window(self):
+        if self.config.get('explanation_mode') == 'explanation' and self.config.get('floating_notes'):
+            self.notes_window.start()
+        else:
+            self.notes_window.stop()
+
+    def hide_floating_notes(self):
+        with self.lock:
+            self.config['floating_notes'] = False
+            atomic_json(self.config_path, self.config)
+
+    def set_mode(self, mode, floating):
+        if mode not in {'silent', 'explanation'}:
+            raise ValueError('Unknown explanation mode')
+        with self.lock:
+            self.config['explanation_mode'] = mode
+            self.config['floating_notes'] = bool(floating)
+            atomic_json(self.config_path, self.config)
+            self.store.emit('explanation_mode_changed', mode=mode,
+                            floating_notes=self.config['floating_notes'])
+            self.sync_notes_window()
 
     def status(self):
         return dict(started=self.started, paused=self.paused, settings=self.config, history=str(self.store.directory),
@@ -103,6 +136,7 @@ class Recorder:
 
     def close(self):
         self.paused = True
+        self.notes_window.stop()
         for w in self.workers:
             w.stop.set()
         if self.excel:
@@ -212,6 +246,26 @@ def make_handler(recorder, token, shutdown):
                     self.respond(200, recorder.status())
                 elif url.path == '/api/events':
                     self.respond(200, recorder.store.recent(search=parse_qs(url.query).get('q', [''])[0]))
+                elif url.path == '/api/handover':
+                    opts = parse_qs(url.query)
+                    include = opts.get('snapshots', ['0'])[0] == '1'
+                    start = opts.get('start', [''])[0][:40]
+                    end = opts.get('end', [''])[0][:40]
+                    output = build_handover(recorder.store, start=start, end=end, include_snapshots=include)
+                    try:
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'application/zip')
+                        self.send_header('Content-Disposition', 'attachment; filename="FileChangeLog-Evidence.zip"')
+                        self.send_header('Content-Length', str(output.stat().st_size))
+                        self.send_header('Cache-Control', 'no-store')
+                        self.send_header('Referrer-Policy', 'no-referrer')
+                        self.send_header('X-Content-Type-Options', 'nosniff')
+                        self.end_headers()
+                        with output.open('rb') as raw:
+                            import shutil
+                            shutil.copyfileobj(raw, self.wfile, length=1024*1024)
+                    finally:
+                        output.unlink(missing_ok=True)
                 elif url.path == '/api/export':
                     q = parse_qs(url.query).get('q', [''])[0]
                     # Bounded UI export; complete JSONL history remains in logs/.
@@ -242,8 +296,17 @@ def make_handler(recorder, token, shutdown):
                     scope = data.get('scope', 'case_note')
                     if scope not in {'case_note', 'proposed_rule'}:
                         raise ValueError('Unknown note scope')
-                    recorder.store.emit('user_explanation', text=text.strip(), linked_event_id=str(data.get('event_id', '')),
-                                        scope=scope, reusable_rule_not_approved=True)
+                    events = recorder.store.recent(limit=40)
+                    suggested = next((dict(event_id=e['id'], path=e.get('path', ''), event=e['event'])
+                                      for e in events if e.get('path') and e['event'] != 'user_explanation'), None)
+                    recorder.store.emit('user_explanation', text=text.strip(),
+                                        linked_event_id=str(data.get('event_id', '')),
+                                        scope=scope, reusable_rule_not_approved=True,
+                                        context_suggested=suggested,
+                                        context_confirmed=bool(data.get('event_id')),
+                                        entered_using='dashboard')
+                elif route == '/api/mode':
+                    recorder.set_mode(data.get('mode', 'silent'), data.get('floating', False))
                 elif route == '/api/pause':
                     paused = bool(data.get('paused'))
                     recorder.paused = paused
@@ -254,6 +317,7 @@ def make_handler(recorder, token, shutdown):
                     set_startup(bool(data.get('enabled')), recorder.store.directory)
                     recorder.store.emit('signin_startup_changed', enabled=bool(data.get('enabled')))
                 elif route == '/api/stop':
+                    (recorder.store.directory/'stopped_by_user.flag').write_text(now(), encoding='utf-8')
                     self.respond(200, {'ok': True})
                     threading.Thread(target=shutdown, daemon=True).start()
                     return
@@ -275,6 +339,10 @@ def main():
     parser.add_argument('--remove-startup', action='store_true')
     args = parser.parse_args()
     args.data_dir.mkdir(parents=True, exist_ok=True)
+    if args.background and (args.data_dir/'stopped_by_user.flag').exists():
+        return
+    if not args.background:
+        (args.data_dir/'stopped_by_user.flag').unlink(missing_ok=True)
     if args.install_startup or args.remove_startup:
         set_startup(args.install_startup, args.data_dir)
         return
