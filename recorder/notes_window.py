@@ -8,20 +8,24 @@ class NotesWindow:
         self.on_close = on_close
         self.hwnd = None
         self.thread = None
-        self._closing_programmatically = False
 
     def start(self):
-        if os.name != 'nt' or (self.thread and self.thread.is_alive()):
+        if os.name != 'nt':
+            return
+        if self.thread and self.thread.is_alive():
+            if self.hwnd:
+                import win32con
+                import win32gui
+                win32gui.ShowWindow(self.hwnd, win32con.SW_SHOWNOACTIVATE)
             return
         self.thread = threading.Thread(target=self._run, daemon=True, name='Floating notes')
         self.thread.start()
 
     def stop(self):
         if self.hwnd:
-            self._closing_programmatically = True
             import win32con
             import win32gui
-            win32gui.PostMessage(self.hwnd, win32con.WM_CLOSE, 0, 0)
+            win32gui.ShowWindow(self.hwnd, win32con.SW_HIDE)
 
     def _run(self):
         import win32api
@@ -63,7 +67,7 @@ class NotesWindow:
                         win32gui.MessageBox(hwnd, str(exc), 'Explanation not saved', win32con.MB_ICONERROR)
                 return 0
             if message == win32con.WM_CLOSE:
-                if not owner._closing_programmatically and owner.on_close:
+                if owner.on_close:
                     owner.on_close()
                 win32gui.DestroyWindow(hwnd)
                 return 0
@@ -72,7 +76,8 @@ class NotesWindow:
                 win32gui.PostQuitMessage(0)
                 return 0
             return win32gui.DefWindowProc(hwnd, message, wparam, lparam)
-        class_name = 'FileChangeLogNotesWindow' + str(id(self))
+        import uuid
+        class_name = 'FileChangeLogNotesWindow' + uuid.uuid4().hex
         wc = win32gui.WNDCLASS()
         wc.lpszClassName = class_name
         wc.lpfnWndProc = handler
