@@ -172,7 +172,8 @@ class FolderWorker:
                             exact_deletion_time_unknown=True)
             self.store.drop_file(self.root, path)
             self.pending.pop(path, None)
-        for path, sig in current.items():
+        # Capture recently modified working files first when baseline allowance is finite.
+        for path, sig in sorted(current.items(), key=lambda item: item[1][1], reverse=True):
             if self.stop.is_set() or not self.enabled():
                 return
             previous = old.get(path)
