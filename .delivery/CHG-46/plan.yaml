@@ -1,0 +1,22 @@
+change_id: CHG-46
+route: Standard Change
+prohibited_paths:
+  - .github/
+  - secrets/
+  - user-history/
+checkpoints:
+  - id: pilot-acceptance-corrections
+    allowed_paths:
+      - recorder/excel.py
+      - recorder/handover.py
+      - recorder/app.py
+      - recorder/folders.py
+      - web/index.html
+      - tests/test_recorder.py
+      - .delivery/CHG-46/
+    test_paths:
+      - tests/
+    tests:
+      - id: core
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 120
