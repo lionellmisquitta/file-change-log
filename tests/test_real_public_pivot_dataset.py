@@ -214,12 +214,14 @@ class RealPublicPivotStress(unittest.TestCase):
                    if e["event"]=="workbook_logic_pivot_state_changes")
         self.assertEqual(delta["pivot_changes"][0]["observation"],"definition_changed")
         self.assertEqual(len(delta["pivot_changes"]),1)
-        first=self.store.directory/versions[0]["snapshot"]
-        second=self.store.directory/versions[1]["snapshot"]
-        self.assertEqual(first.read_bytes(),original)
-        self.assertEqual(second.read_bytes(),edited)
-        self.assertEqual(len(extract_workbook_logic(first)["pivots"]),5)
-        self.assertEqual(len(extract_workbook_logic(second)["pivots"]),5)
+        # Store.recent is reverse-chronological. Identify each retained
+        # version by its authoritative original bytes, never list position.
+        retained=[self.store.directory/e["snapshot"] for e in versions]
+        retained_hashes={hashlib.sha256(path.read_bytes()).hexdigest() for path in retained}
+        self.assertEqual(retained_hashes, {
+            hashlib.sha256(original).hexdigest(), hashlib.sha256(edited).hexdigest()})
+        self.assertTrue(all(len(extract_workbook_logic(path)["pivots"])==5
+                            for path in retained))
         print("REAL_PIVOT_SAME_PATH_REVISION "+json.dumps({
             "versions":len(versions),"original_hash":hashlib.sha256(original).hexdigest(),
             "revised_hash":hashlib.sha256(edited).hexdigest(),
