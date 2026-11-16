@@ -10,7 +10,7 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 from recorder.app import Recorder, make_handler, validate_config
-from recorder.common import inside, cell_address
+from recorder.common import inside, cell_address, canonical
 from recorder.compare import compare_files
 from recorder.excel import CellCache, ExcelListener
 from recorder.folders import FolderWorker
@@ -194,6 +194,83 @@ class StoreTests(Workspace):
         try:self.assertEqual(recovered.recent()[0]['id'],event['id'])
         finally:recovered.close()
 
+class PhaseOneRegressionTests(Workspace):
+    def test_torn_jsonl_record_does_not_swallow_next_event(self):
+        self.store.emit('before_torn', 'a')
+        log = next(self.store.logs.glob('events-*.jsonl'))
+        with log.open('ab') as handle:
+            handle.write(b'{"truncated":')
+        recovered = Store(self.store.directory)
+        try:
+            recovered.emit('after_torn', 'b')
+        finally:
+            recovered.close()
+        replay = Store(self.store.directory)
+        try:
+            kinds = [event['event'] for event in replay.recent()]
+            self.assertIn('torn_record_detected', kinds)
+            self.assertIn('after_torn', kinds)
+        finally:
+            replay.close()
+
+    def test_snapshot_deduplicated_across_folders_and_renames(self):
+        p = self.root/'one.txt'
+        p.write_bytes(b'hello')
+        self.capture()
+        used = self.store.snapshot_bytes
+        (self.root/'sub').mkdir()
+        (self.root/'sub'/'two.txt').write_bytes(b'hello')
+        self.capture()
+        self.assertEqual(self.store.snapshot_bytes, used)
+        (self.root/'sub'/'two.txt').rename(self.root/'sub'/'three.txt')
+        self.capture()
+        self.assertEqual(self.store.snapshot_bytes, used)
+
+    def test_rename_preserves_file_identity_without_false_deletion(self):
+        source = self.root/'before.csv'
+        destination = self.root/'after.csv'
+        source.write_text('record,total\\n1,15\\n')
+        self.capture()
+        old_snapshot = self.store.inventory(self.worker.root)[canonical(source)][1]
+        source.rename(destination)
+        self.worker.scan_once()
+        new_inventory = self.store.inventory(self.worker.root)
+        self.assertNotIn(canonical(source), new_inventory)
+        self.assertEqual(new_inventory[canonical(destination)][1], old_snapshot)
+        self.assertIn('file_moved', self.kinds())
+        self.assertNotIn('file_absent_on_scan', self.kinds())
+
+    def test_budget_skips_with_explicit_evidence(self):
+        self.worker.settings['snapshot_budget_mb'] = 10
+        self.worker.settings['baseline_budget_mb'] = 0
+        p = self.root/'orders.txt'
+        p.write_bytes(b'something')
+        self.capture()
+        self.assertIn('snapshot_skipped_budget', self.kinds())
+        self.assertIsNone(self.store.inventory(self.worker.root)[canonical(p)][1])
+
+    def test_recursive_paste_inside_new_nested_directory(self):
+        deep = self.root/'year'/'quarter'/'batch'
+        deep.mkdir(parents=True)
+        (deep/'payments.csv').write_text('invoice,value\n1,300\n')
+        self.capture()
+        self.assertIn(canonical(deep/'payments.csv'), self.store.inventory(self.worker.root))
+
+    def test_sparse_seeded_sheet_classifies_new_outside_used_range(self):
+        cache = CellCache()
+        cache.seed('sheet', {'A1': {'value': 3, 'formula': None}})
+        result = cache.change('sheet', {'Z10': {'value': 7, 'formula': None}})[0]
+        self.assertTrue(result['old_value_known'])
+        self.assertEqual(result['operation'], 'added')
+
+    def test_invalidated_sheet_never_invents_old_value(self):
+        cache = CellCache()
+        cache.seed('sheet', {'A2': {'value': 'old', 'formula': None}})
+        cache.invalidate('sheet')
+        result = cache.change('sheet', {'A2': {'value': 'new', 'formula': None}})[0]
+        self.assertFalse(result['old_value_known'])
+        self.assertEqual(result['operation'], 'observed_unknown_prior')
+
 class ConfigurationTests(Workspace):
     @unittest.skipUnless(os.name == 'nt', 'Windows short-path alias check')
     def test_windows_short_path_cannot_bypass_history_exclusion(self):
@@ -239,6 +316,32 @@ class HttpTests(unittest.TestCase):
     def test_note_empty_rejected(self):
         with self.assertRaises(urllib.error.HTTPError) as e:self.request('/api/note',{'text':''})
         self.assertEqual(e.exception.code,400)
+    def test_evidence_zip_contains_complete_history_notes_and_manifest(self):
+        import io
+        import zipfile
+        self.recorder.store.emit('file_version_captured', 'a.csv', snapshot='snapshots/abc.csv')
+        self.recorder.store.emit('user_explanation', text='manual royalty adjustment', scope='case_note')
+        with self.request('/api/handover') as response:
+            body = response.read()
+        with zipfile.ZipFile(io.BytesIO(body)) as archive:
+            names = set(archive.namelist())
+            self.assertTrue({'events.jsonl', 'notes.jsonl', 'gaps.jsonl', 'manifest.json'} <= names)
+            manifest = json.loads(archive.read('manifest.json'))
+            self.assertEqual(manifest['counts']['notes'], 1)
+            self.assertIn(b'manual royalty adjustment', archive.read('notes.jsonl'))
+            self.assertEqual(manifest['counts']['events'], 2)
+            self.assertFalse(any(name.startswith('snapshots/') for name in names))
+
+    def test_silent_and_explanation_modes_persist(self):
+        with self.request('/api/mode', {'mode': 'explanation', 'floating': True}) as response:
+            self.assertEqual(response.status, 200)
+        config = json.loads(self.recorder.config_path.read_text(encoding='utf-8'))
+        self.assertEqual(config['explanation_mode'], 'explanation')
+        self.assertTrue(config['floating_notes'])
+        with self.request('/api/mode', {'mode': 'silent', 'floating': False}) as response:
+            self.assertEqual(response.status, 200)
+        self.assertEqual(self.recorder.status()['settings']['explanation_mode'], 'silent')
+
     def test_page_has_no_external_scripts(self):
         with self.request('/') as r:
             html=r.read().decode();self.assertIn("textContent=content",html);self.assertNotIn('<script src=',html)
