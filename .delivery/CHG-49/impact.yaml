@@ -1,0 +1,16 @@
+change_id: CHG-49
+readiness: qa_only_no_product_changes
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - tests/test_public_dataset_stress.py
+regression_obligations:
+  - id: QA1
+    reason: Verify source-file baseline, recursive folders, deduplication and restart using downloaded real datasets
+    test_id: public-data
+  - id: QA2
+    reason: Verify long Excel formula edits and manual exceptions are not silently omitted
+    test_id: public-data
+  - id: QA3
+    reason: Verify filter-only workbook saves and exported evidence integrity
+    test_id: public-data
