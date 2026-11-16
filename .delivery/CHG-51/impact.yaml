@@ -1,0 +1,23 @@
+change_id: CHG-51
+readiness: review
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - recorder/formula_patterns.py
+  - recorder/compare.py
+  - recorder/folders.py
+  - tests/test_formula_patterns.py
+  - docs/FORMULA-PATTERN-EVIDENCE.md
+regression_obligations:
+  - id: R1
+    reason: Relative, mixed and absolute A1 formulas must translate to each exact target cell
+    test_id: full-regression
+  - id: R2
+    reason: Nonformula manual overrides and discontinuous formula runs must remain explicit
+    test_id: full-regression
+  - id: R3
+    reason: Total changes must equal represented patterns plus listed details plus truncated details
+    test_id: full-regression
+  - id: R4
+    reason: Originals, retained saved snapshots and legacy comparison contracts must remain intact
+    test_id: full-regression
