@@ -1,0 +1,17 @@
+change_id: CHG-57
+readiness: review
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - LICENSE
+  - README.md
+regression_obligations:
+  - id: R1
+    reason: The root license text must be the complete recognized GNU AGPL v3.0 license, without modifications
+    test_id: full-regression
+  - id: R2
+    reason: Public README must accurately explain strong copyleft and commercial-use conditions without falsely banning commercial use
+    test_id: full-regression
+  - id: R3
+    reason: Existing application and tests must remain unchanged by documentation and licensing updates
+    test_id: full-regression
