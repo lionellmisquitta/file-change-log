@@ -13,6 +13,8 @@ It is designed for workflows where understanding *how* a spreadsheet or collecti
 
 **Current status:** `v0.2.4-beta` code on `main` · Windows x64 · Open-source repository · **Beta, not a complete audit trail**
 
+**License:** [GNU Affero General Public License v3.0 only (AGPL-3.0-only)](LICENSE). Commercial use is permitted under its terms; distributing a derivative/modified covered work requires corresponding source under AGPL, and modified network services must offer source to users interacting with them remotely. Private internal modifications not distributed or offered through a covered network interaction do not automatically need publication. See [Licensing and third-party components](#licensing-and-third-party-components).
+
 [**Get the Windows app**](https://github.com/lionellmisquitta/file-change-log/actions/workflows/verify.yml) · [**Releases**](https://github.com/lionellmisquitta/file-change-log/releases) · [**Report an issue**](https://github.com/lionellmisquitta/file-change-log/issues) · [**How capture works**](docs/CAPTURE-CONTRACT.md)
 
 > **Important:** Saved-workbook pivot extraction and automated pivot-operation comparisons have passed tests. End-to-end *live Microsoft Excel* COM recording, Excel slicer reconstruction, and complete process replay have **not** yet passed target-desktop acceptance testing.
@@ -132,6 +134,21 @@ GitHub Actions runs Windows and Ubuntu regression suites and packages the Window
 ## Project direction
 
 The longer-term goal is to move from **evidence collection → deterministic workbook logic extraction → explainable workflow reconstruction**. Automated replay, comprehensive pivot/slicer reconstruction and process inference are **future work**, not features of this beta.
+
+## Licensing and third-party components
+
+**File Change Log source code is available under the [GNU Affero General Public License version 3, only](LICENSE) (`AGPL-3.0-only`).** This is a strong copyleft open-source license—not a prohibition on commercial activity.
+
+- **You may:** run, study, modify, redistribute, and commercially use File Change Log in compliance with the license.
+- **If you distribute a modified or combined covered work:** preserve the applicable notices, license the whole covered work as required by the AGPL, and provide its Corresponding Source to recipients as the license requires. Merely providing a link to the upstream repository does **not** satisfy the obligation to supply your modified source.
+- **If users interact with your modified version over a network:** AGPL section 13 requires offering those users access to its Corresponding Source, even where no binary is distributed.
+- **Private internal use:** modifications used privately inside one organization do not, by that fact alone, have to be published. Whether particular integrations form a covered combined work is fact-dependent.
+- **Separate components:** bundled Python and third-party packages remain subject to their own license notices; adding AGPL to this repository does not relicense those upstream components or override their attribution obligations.
+- **Media:** the promotional video, animation and cover image in `media/` are separate creative assets, not computer-program source. No blanket grant to reuse those promotional assets is made solely by the source-code license.
+
+There is **no proprietary incorporation exception** included in this license grant. If you need a different arrangement for a particular use, seek permission from the relevant copyright holders.
+
+See the [full license](LICENSE) and [GNU AGPL overview](https://www.gnu.org/licenses/agpl-3.0.html). This overview is not a substitute for the actual license terms.
 
 ## Feedback and contributions
 
