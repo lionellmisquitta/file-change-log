@@ -86,7 +86,7 @@ class Recorder:
             self.store.emit('monitoring_gap', last_observed_at=previous.get('timestamp_utc'),
                             resumed_at=now(), cause='previous_recorder_session_ended',
                             intermediate_events_not_recoverable=True)
-        self.store.emit('recorder_started', version='0.2.4-beta', platform=sys.platform,
+        self.store.emit('recorder_started', version='0.2.5-beta', platform=sys.platform,
                         recorded_account=os.environ.get('USERNAME', os.environ.get('USER', 'unknown')),
                         capture_scope='selected_folders_only', missing_intermediate_history_not_recoverable=True)
         self.reconfigure_workers()

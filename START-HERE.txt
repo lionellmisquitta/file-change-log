@@ -1,4 +1,4 @@
-FILE CHANGE LOG — first Windows pilot
+FILE CHANGE LOG v0.2.5-beta — Windows x64 beta
 
 1. Extract the entire ZIP into a permanent local folder.
    Example: C:\Users\your-name\Apps\FileChangeLog
@@ -17,7 +17,7 @@ Stop recorder completely stops the process. Disable start at sign-in removes sta
 History defaults to %LOCALAPPDATA%\FileChangeLog. No history is automatically deleted.
 The app never writes to your monitored source files or sends data to an LLM/cloud.
 
-IMPORTANT: This package was built outside Windows. Core behaviour is tested;
+IMPORTANT: This package is automatically built on Windows CI. Core behaviour is tested;
 actual desktop Excel event capture requires the Windows acceptance check in docs.
 Use representative copies before operational use. This is not a complete audit trail.
 
@@ -25,3 +25,7 @@ No admin installation is designed into this pilot. Your company's application
 control may still require IT to allow the Python runtime/launcher.
 
 See README.md and docs\WINDOWS-ACCEPTANCE.md for capture limits and diagnosis.
+
+EXPLANATION WINDOW: In Silent Mode no floating window option is shown.
+Switch to Explanation Mode to enable the optional notes window.
+The native Windows editor/save control is exercised in automated Windows tests.

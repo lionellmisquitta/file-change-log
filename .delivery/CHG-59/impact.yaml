@@ -1,0 +1,23 @@
+change_id: CHG-59
+readiness: review
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - recorder/app.py
+  - README.md
+  - START-HERE.txt
+  - docs/releases/v0.2.5-beta.md
+  - .github/workflows/publish-v0.2.5-beta.yml
+regression_obligations:
+  - id: R1
+    reason: Public version and bundled launch instructions must match released source
+    test_id: full-regression
+  - id: R2
+    reason: New release must be assembled from merged main with native Windows tests and verified bundled Python runtime
+    test_id: full-regression
+  - id: R3
+    reason: Release publication must have permanent ZIP asset, correct prerelease tag and installation-first notes
+    test_id: full-regression
+  - id: R4
+    reason: Windows floating editor fix and saved pivot logic must regress cleanly
+    test_id: full-regression

@@ -1,0 +1,24 @@
+change_id: CHG-59
+route: Standard Change
+prohibited_paths:
+  - recorder/notes_window.py
+  - recorder/excel.py
+  - recorder/folders.py
+  - tests/
+checkpoints:
+  - id: publish-v0.2.5-beta
+    allowed_paths:
+      - recorder/app.py
+      - README.md
+      - START-HERE.txt
+      - docs/releases/v0.2.5-beta.md
+      - .github/workflows/publish-v0.2.5-beta.yml
+      - .delivery/CHG-59/
+    test_paths:
+      - tests/
+    test_config_changes:
+      - .github/workflows/publish-v0.2.5-beta.yml
+    tests:
+      - id: full-regression
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 240

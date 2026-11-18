@@ -11,11 +11,11 @@ File Change Log is a local-first Windows application that observes changes in se
 
 It is designed for workflows where understanding *how* a spreadsheet or collection of files evolved matters: financial and royalty operations, recurring reporting, reconciliation, data preparation, and process discovery.
 
-**Current status:** `v0.2.4-beta` code on `main` · Windows x64 · Open-source repository · **Beta, not a complete audit trail**
+**Current status:** `v0.2.5-beta` beta release source on `main` · Windows x64 · Open-source repository · **Beta, not a complete audit trail**
 
 **License:** [GNU Affero General Public License v3.0 only (AGPL-3.0-only)](LICENSE). Commercial use is permitted under its terms; distributing a derivative/modified covered work requires corresponding source under AGPL, and modified network services must offer source to users interacting with them remotely. Private internal modifications not distributed or offered through a covered network interaction do not automatically need publication. See [Licensing and third-party components](#licensing-and-third-party-components).
 
-[**Get the Windows app**](https://github.com/lionellmisquitta/file-change-log/actions/workflows/verify.yml) · [**Releases**](https://github.com/lionellmisquitta/file-change-log/releases) · [**Report an issue**](https://github.com/lionellmisquitta/file-change-log/issues) · [**How capture works**](docs/CAPTURE-CONTRACT.md)
+[**Get the Windows app**](https://github.com/lionellmisquitta/file-change-log/releases/tag/v0.2.5-beta) · [**Releases**](https://github.com/lionellmisquitta/file-change-log/releases) · [**Report an issue**](https://github.com/lionellmisquitta/file-change-log/issues) · [**How capture works**](docs/CAPTURE-CONTRACT.md)
 
 > **Important:** Saved-workbook pivot extraction and automated pivot-operation comparisons have passed tests. End-to-end *live Microsoft Excel* COM recording, Excel slicer reconstruction, and complete process replay have **not** yet passed target-desktop acceptance testing.
 
@@ -23,13 +23,12 @@ It is designed for workflows where understanding *how* a spreadsheet or collecti
 
 ### Windows x64 — no separate Python installation
 
-1. Open the [**latest Windows build workflow**](https://github.com/lionellmisquitta/file-change-log/actions/workflows/verify.yml). Select the newest **successful** run and scroll down to **Artifacts**.
-2. Download **`FileChangeLog-Windows-x64`**. GitHub may require you to sign in.
-3. Extract the downloaded artifact. If it contains `FileChangeLog-Windows-x64.zip`, extract that ZIP too.
-4. Move the extracted application folder to a **permanent local directory**, for example `C:\Users\your-name\Apps\FileChangeLog`. **Do not run from within a ZIP.**
-5. Double-click **`Start Recorder.bat`**. The dashboard opens in your browser.
-6. Add a full folder path per line under **Folders to watch** and click **Save folders**. Subfolders are included.
-7. Optionally select **Enable start at sign-in** to restart the recorder when your Windows user signs in.
+1. Open the [**v0.2.5-beta release**](https://github.com/lionellmisquitta/file-change-log/releases/tag/v0.2.5-beta) and download **`FileChangeLog-Windows-x64.zip`** from **Assets**.
+2. Extract the ZIP (there is no separate installer).
+3. Move the extracted application folder to a **permanent local directory**, for example `C:\Users\your-name\Apps\FileChangeLog`. **Do not run from within a ZIP.**
+4. Double-click **`Start Recorder.bat`**. The dashboard opens in your browser.
+5. Add a full folder path per line under **Folders to watch** and click **Save folders**. Subfolders are included.
+6. Optionally select **Enable start at sign-in** to restart the recorder when your Windows user signs in.
 
 The packaged app includes its own Python runtime. Admin rights are not normally required, but an organization-managed PC may require IT to allow the bundled runtime or BAT launcher.
 
@@ -47,7 +46,7 @@ Closing the browser tab **does not stop recording**. Run `Open Recorder.bat` to 
 
 **Security note:** If Windows Smart App Control or company policy blocks the launcher/runtime, contact your IT administrator for an approved allow-list process. Do not disable device protections to run the app.
 
-**Download note:** GitHub Actions artifacts expire and may require sign-in. A GitHub **Code → Download ZIP** is source code, **not** the packaged Windows app. Once a permanent release asset is published, use the [Releases page](https://github.com/lionellmisquitta/file-change-log/releases) for that version.
+**Download note:** Use the permanent ZIP attached to the [versioned release](https://github.com/lionellmisquitta/file-change-log/releases/tag/v0.2.5-beta). A GitHub **Code → Download ZIP** is source code, **not** the packaged Windows app.
 
 ## Why this exists
 
