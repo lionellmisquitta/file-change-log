@@ -1,0 +1,88 @@
+name: Publish File Change Log v0.2.5 Beta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-v0.2.5-beta.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-file-change-log-v0.2.5-beta
+  cancel-in-progress: false
+
+jobs:
+  build-test-and-publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@v4
+
+      - name: Set up test Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install test requirements
+        run: python -m pip install -r requirements.txt
+
+      - name: Verify recorder and Windows-native floating notes input
+        run: python -m unittest discover -s tests -v
+
+      - name: Validate source
+        run: python -m compileall -q recorder run.py build_windows_bundle.py
+
+      - name: Build distributable Windows ZIP
+        run: python build_windows_bundle.py
+
+      - name: Verify bundled Windows Python runtime and application imports
+        shell: pwsh
+        run: |
+          & 'dist/FileChangeLog-Windows-x64/runtime/python.exe' -c "import pythoncom, win32com.client, win32gui, watchdog, openpyxl; import recorder.app; print('Bundled runtime imports passed')"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Confirm version, release notes and asset
+        shell: pwsh
+        run: |
+          $version = Get-Content 'recorder/app.py' -Raw
+          if ($version -notmatch "version='0.2.5-beta'") { throw 'Application version mismatch' }
+          if (!(Test-Path 'docs/releases/v0.2.5-beta.md')) { throw 'Release notes missing' }
+          if (!(Test-Path 'dist/FileChangeLog-Windows-x64.zip')) { throw 'Windows asset missing' }
+          $size = (Get-Item 'dist/FileChangeLog-Windows-x64.zip').Length
+          if ($size -lt 1000000) { throw "Windows package is unexpectedly small: $size bytes" }
+          Get-FileHash 'dist/FileChangeLog-Windows-x64.zip' -Algorithm SHA256 | Format-List
+          "Release commit: $env:GITHUB_SHA" >> $env:GITHUB_STEP_SUMMARY
+          "Package bytes: $size" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Publish release with permanent Windows ZIP
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'v0.2.5-beta'
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release $tag already exists. Refusing to replace it or attach a mismatched build."
+          }
+          gh release create $tag 'dist/FileChangeLog-Windows-x64.zip' --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'File Change Log v0.2.5 Beta' --notes-file 'docs/releases/v0.2.5-beta.md' --prerelease --latest=false
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
+
+      - name: Verify published release and downloadable asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'v0.2.5-beta'
+          $release = gh release view $tag --repo $env:GITHUB_REPOSITORY --json url,tagName,isPrerelease,assets | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or !$release.url) { throw 'Published release could not be verified' }
+          if (!$release.isPrerelease -or $release.tagName -ne $tag) { throw 'Release tag or prerelease flag mismatch' }
+          $asset = @($release.assets | Where-Object { $_.name -eq 'FileChangeLog-Windows-x64.zip' })
+          if ($asset.Count -ne 1 -or $asset[0].size -lt 1000000) { throw 'Windows release asset missing' }
+          "Release: $($release.url)" >> $env:GITHUB_STEP_SUMMARY
+          "Asset: $($asset[0].name), $($asset[0].size) bytes" >> $env:GITHUB_STEP_SUMMARY
+          Write-Output "PUBLISHED_RELEASE $($release.url)"
