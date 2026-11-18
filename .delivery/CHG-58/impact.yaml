@@ -1,0 +1,22 @@
+change_id: CHG-58
+readiness: review
+open_contradictions: []
+hub_suppressed: false
+targets:
+  - recorder/app.py
+  - recorder/notes_window.py
+  - web/index.html
+  - tests/test_floating_notes_mode.py
+regression_obligations:
+  - id: R1
+    reason: Silent mode must remove the optional floating window control and suppress stale persisted enabled settings
+    test_id: full-regression
+  - id: R2
+    reason: Native floating window must create a usable EDIT control, allow text entry and save without corrupting evidence
+    test_id: full-regression
+  - id: R3
+    reason: Window focus and lifecycle must be managed on its own Win32 UI thread rather than HTTP workers
+    test_id: full-regression
+  - id: R4
+    reason: The new optional UI must not affect background recorder and saved workbook regression
+    test_id: full-regression

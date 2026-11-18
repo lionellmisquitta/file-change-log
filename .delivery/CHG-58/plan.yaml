@@ -1,0 +1,20 @@
+change_id: CHG-58
+route: Standard Change
+prohibited_paths:
+  - .github/
+  - requirements.txt
+  - build_windows_bundle.py
+checkpoints:
+  - id: floating-notes-mode-focus
+    allowed_paths:
+      - recorder/app.py
+      - recorder/notes_window.py
+      - web/index.html
+      - tests/test_floating_notes_mode.py
+      - .delivery/CHG-58/
+    test_paths:
+      - tests/
+    tests:
+      - id: full-regression
+        command: [python, -m, unittest, discover, -s, tests, -v]
+        timeout_seconds: 240

@@ -60,7 +60,7 @@ def validate_config(data, output):
     if mode not in {'silent', 'explanation'}:
         raise ValueError('Unknown explanation mode')
     config['explanation_mode'] = mode
-    config['floating_notes'] = bool(data.get('floating_notes', False))
+    config['floating_notes'] = (mode == 'explanation' and bool(data.get('floating_notes', False)))
     config['paused'] = bool(data.get('paused', False))
     if config['baseline_budget_mb'] > config['snapshot_budget_mb']:
         raise ValueError('Baseline allowance cannot exceed snapshot budget.')
@@ -134,7 +134,7 @@ class Recorder:
             raise ValueError('Unknown explanation mode')
         with self.lock:
             self.config['explanation_mode'] = mode
-            self.config['floating_notes'] = bool(floating)
+            self.config['floating_notes'] = (mode == 'explanation' and bool(floating))
             atomic_json(self.config_path, self.config)
             self.store.emit('explanation_mode_changed', mode=mode,
                             floating_notes=self.config['floating_notes'])
