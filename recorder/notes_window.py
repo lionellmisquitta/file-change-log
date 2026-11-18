@@ -58,29 +58,32 @@ class NotesWindow:
             if controls.get('edit') and win32gui.IsWindow(controls['edit']):
                 win32gui.SetFocus(controls['edit'])
 
+        def create_controls(hwnd):
+            # Build children *after* the parent CreateWindowEx returns.
+            # The pywin32 class callback cannot be relied on to initialize
+            # children during WM_CREATE on all supported Windows runtimes.
+            controls['edit'] = win32gui.CreateWindowEx(
+                win32con.WS_EX_CLIENTEDGE, 'EDIT', '',
+                win32con.WS_CHILD | win32con.WS_VISIBLE |
+                win32con.WS_TABSTOP | win32con.WS_VSCROLL |
+                win32con.ES_LEFT | win32con.ES_MULTILINE |
+                win32con.ES_AUTOVSCROLL | win32con.ES_WANTRETURN,
+                12, 40, 325, 105, hwnd, edit_id, None, None)
+            if not controls['edit']:
+                raise RuntimeError('Floating explanation edit control could not be created')
+            controls['save'] = win32gui.CreateWindowEx(
+                0, 'BUTTON', 'Save explanation',
+                win32con.WS_CHILD | win32con.WS_VISIBLE |
+                win32con.WS_TABSTOP | win32con.BS_PUSHBUTTON,
+                185, 156, 150, 29, hwnd, save_id, None, None)
+            if not controls['save']:
+                raise RuntimeError('Floating explanation save button could not be created')
+            win32gui.CreateWindowEx(
+                0, 'STATIC', 'Type what you did and why (optional)',
+                win32con.WS_CHILD | win32con.WS_VISIBLE,
+                12, 12, 320, 22, hwnd, 0, None, None)
+
         def handler(hwnd, message, wparam, lparam):
-            if message == win32con.WM_CREATE:
-                controls['edit'] = win32gui.CreateWindowEx(
-                    win32con.WS_EX_CLIENTEDGE, 'EDIT', '',
-                    win32con.WS_CHILD | win32con.WS_VISIBLE |
-                    win32con.WS_TABSTOP | win32con.WS_VSCROLL |
-                    win32con.ES_LEFT | win32con.ES_MULTILINE |
-                    win32con.ES_AUTOVSCROLL | win32con.ES_WANTRETURN,
-                    12, 40, 325, 105, hwnd, edit_id, None, None)
-                if not controls['edit']:
-                    raise RuntimeError('Floating explanation edit control could not be created')
-                controls['save'] = win32gui.CreateWindowEx(
-                    0, 'BUTTON', 'Save explanation',
-                    win32con.WS_CHILD | win32con.WS_VISIBLE |
-                    win32con.WS_TABSTOP | win32con.BS_PUSHBUTTON,
-                    185, 156, 150, 29, hwnd, save_id, None, None)
-                if not controls['save']:
-                    raise RuntimeError('Floating explanation save button could not be created')
-                win32gui.CreateWindowEx(
-                    0, 'STATIC', 'Type what you did and why (optional)',
-                    win32con.WS_CHILD | win32con.WS_VISIBLE,
-                    12, 12, 320, 22, hwnd, 0, None, None)
-                return 0
             if message == win32con.WM_APP + owner.FOCUS_MESSAGE_OFFSET:
                 focus_editor(hwnd)
                 return 0
@@ -135,8 +138,9 @@ class NotesWindow:
                 win32con.WS_OVERLAPPED | win32con.WS_CAPTION |
                 win32con.WS_SYSMENU | win32con.WS_MINIMIZEBOX,
                 x, y, 360, 235, 0, 0, wc.hInstance, None)
-            if not hwnd or not controls.get('edit'):
-                raise RuntimeError('Floating explanation controls were not initialized')
+            if not hwnd:
+                raise RuntimeError('Floating explanation parent window could not be created')
+            create_controls(hwnd)
             owner.hwnd = hwnd
             focus_editor(hwnd)
             win32gui.PumpMessages()
