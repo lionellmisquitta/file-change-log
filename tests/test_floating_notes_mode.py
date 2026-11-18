@@ -1,5 +1,7 @@
 """CHG-58 regressions: Silent Mode, window focus and explanation controls."""
 import json
+import os
+import time
 import tempfile
 import threading
 import unittest
@@ -93,6 +95,42 @@ class ExplanationModeTests(unittest.TestCase):
         self.assertNotIn("SW_SHOWNOACTIVATE", source.replace(
             "# SW_SHOWNOACTIVATE was previously used", ""))
         self.assertIn("'floating_notes_window_failed'", source)
+
+
+
+@unittest.skipUnless(os.name == "nt", "Windows desktop Win32 UI smoke test")
+class NativeNotesWindowSmoke(unittest.TestCase):
+    def test_editor_control_created_accepts_text_and_saves(self):
+        import win32con
+        import win32gui
+        store = FakeStore()
+        window = NotesWindow(store)
+        try:
+            window.start()
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline and not window.hwnd:
+                time.sleep(.05)
+            self.assertTrue(window.hwnd, "Win32 window failed to start: %r" %
+                            store.events)
+            hwnd = window.hwnd
+            edit = win32gui.GetDlgItem(hwnd, 1001)
+            self.assertTrue(edit and win32gui.IsWindow(edit),
+                            "Editable child control was not created")
+            win32gui.SendMessage(edit, win32con.WM_SETTEXT, 0,
+                                 "Automated explanation")
+            self.assertEqual(win32gui.GetWindowText(edit),
+                             "Automated explanation")
+            win32gui.SendMessage(hwnd, win32con.WM_COMMAND, 1002, 0)
+            explained = [details for kind, details in store.events
+                         if kind == "user_explanation"]
+            self.assertEqual(len(explained), 1)
+            self.assertEqual(explained[0]["text"], "Automated explanation")
+            self.assertEqual(win32gui.GetWindowText(edit), "")
+        finally:
+            if window.hwnd and win32gui.IsWindow(window.hwnd):
+                win32gui.PostMessage(window.hwnd, win32con.WM_CLOSE, 0, 0)
+            if window.thread:
+                window.thread.join(timeout=4)
 
 
 if __name__ == "__main__":
